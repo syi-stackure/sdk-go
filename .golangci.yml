@@ -1,0 +1,38 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - contextcheck
+    - errcheck
+    - errorlint
+    - gocyclo
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - nilerr
+    - revive
+    - staticcheck
+    - unused
+
+  settings:
+    gocyclo:
+      min-complexity: 15
+
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - gocyclo
+          - gosec
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

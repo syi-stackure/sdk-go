@@ -1,0 +1,51 @@
+name: Bug report
+description: Report a reproducible defect in the Stackure Go SDK
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did you do, what did you see
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproducer
+    attributes:
+      label: Minimal reproducer
+      description: Smallest Go snippet that reproduces the issue
+      render: go
+    validations:
+      required: true
+  - type: input
+    id: sdk-version
+    attributes:
+      label: SDK version
+      placeholder: "v0.1.0 or commit SHA"
+    validations:
+      required: true
+  - type: input
+    id: go-version
+    attributes:
+      label: Go version
+      placeholder: "go1.22.0"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "macOS 14.4 / Ubuntu 22.04 / Windows 11"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or errors
+      render: shell

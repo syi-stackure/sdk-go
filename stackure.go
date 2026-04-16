@@ -1,7 +1,3 @@
-// Package stackure provides a Go SDK for the Stackure authentication API.
-//
-// It offers both a configurable Client for direct API access and package-level
-// convenience functions backed by a shared default client.
 package stackure
 
 import (
