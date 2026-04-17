@@ -56,12 +56,6 @@ jobs:
         with:
           go-version: stable
       - run: go build ./...
-      - name: Create + push tag
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag "${{ needs.check.outputs.tag }}"
-          git push origin "${{ needs.check.outputs.tag }}"
       - name: Source archive
         run: git archive --format=tar.gz -o "sdk-go-${{ needs.check.outputs.tag }}.tar.gz" HEAD
       - name: Attest provenance
@@ -75,6 +69,12 @@ jobs:
           cosign sign-blob --yes \
             --bundle "sdk-go-${{ needs.check.outputs.tag }}.tar.gz.sigstore" \
             "sdk-go-${{ needs.check.outputs.tag }}.tar.gz"
+      - name: Create + push tag (last; only if all prior steps passed)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${{ needs.check.outputs.tag }}"
+          git push origin "${{ needs.check.outputs.tag }}"
       - name: GitHub Release
         uses: softprops/action-gh-release@v3
         with:
