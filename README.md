@@ -1,10 +1,10 @@
 # Stackure Go SDK
 
-[![CI](https://github.com/stackure/stackure-go/actions/workflows/ci.yml/badge.svg)](https://github.com/stackure/stackure-go/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/stackure/stackure-go.svg)](https://pkg.go.dev/github.com/stackure/stackure-go)
-[![Go Report Card](https://goreportcard.com/badge/github.com/stackure/stackure-go)](https://goreportcard.com/report/github.com/stackure/stackure-go)
-[![Latest release](https://img.shields.io/github/v/release/stackure/stackure-go?sort=semver)](https://github.com/stackure/stackure-go/releases)
-[![Go version](https://img.shields.io/github/go-mod/go-version/stackure/stackure-go)](./go.mod)
+[![CI](https://github.com/syi-stackure/sdk-go/actions/workflows/ci.yml/badge.svg)](https://github.com/syi-stackure/sdk-go/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/syi-stackure/sdk-go.svg)](https://pkg.go.dev/github.com/syi-stackure/sdk-go)
+[![Go Report Card](https://goreportcard.com/badge/github.com/syi-stackure/sdk-go)](https://goreportcard.com/report/github.com/syi-stackure/sdk-go)
+[![Latest release](https://img.shields.io/github/v/release/syi-stackure/sdk-go?sort=semver)](https://github.com/syi-stackure/sdk-go/releases)
+[![Go version](https://img.shields.io/github/go-mod/go-version/syi-stackure/sdk-go)](./go.mod)
 [![SLSA 3](https://slsa.dev/images/gh-badge-level3.svg)](https://slsa.dev)
 
 Authentication for your app. One line. Zero dependencies.
@@ -12,13 +12,13 @@ Authentication for your app. One line. Zero dependencies.
 ## Install
 
 ```bash
-go get github.com/stackure/stackure-go
+go get github.com/syi-stackure/sdk-go
 ```
 
 ## Protect a route
 
 ```go
-import "github.com/stackure/stackure-go"
+import "github.com/syi-stackure/sdk-go"
 
 http.Handle("/admin", stackure.Auth("my-app-id", stackure.Roles("admin"))(handler))
 ```
@@ -79,7 +79,7 @@ if errors.As(err, &authErr) { /* ... */ }
 
 ## Docs
 
-Full API reference lives on [pkg.go.dev](https://pkg.go.dev/github.com/stackure/stackure-go).
+Full API reference lives on [pkg.go.dev](https://pkg.go.dev/github.com/syi-stackure/sdk-go).
 
 ## Contributing
 

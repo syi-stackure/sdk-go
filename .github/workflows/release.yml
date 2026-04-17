@@ -55,22 +55,22 @@ jobs:
         with:
           go-version: stable
       - name: Create source archive
-        run: git archive --format=tar.gz -o "stackure-go-${{ needs.verify.outputs.tag }}.tar.gz" HEAD
+        run: git archive --format=tar.gz -o "sdk-go-${{ needs.verify.outputs.tag }}.tar.gz" HEAD
       - name: Attest archive
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: "stackure-go-${{ needs.verify.outputs.tag }}.tar.gz"
+          subject-path: "sdk-go-${{ needs.verify.outputs.tag }}.tar.gz"
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
       - name: Sign archive (keyless)
-        run: cosign sign-blob --yes --output-signature stackure-go-${{ needs.verify.outputs.tag }}.tar.gz.sig --output-certificate stackure-go-${{ needs.verify.outputs.tag }}.tar.gz.pem stackure-go-${{ needs.verify.outputs.tag }}.tar.gz
+        run: cosign sign-blob --yes --output-signature sdk-go-${{ needs.verify.outputs.tag }}.tar.gz.sig --output-certificate sdk-go-${{ needs.verify.outputs.tag }}.tar.gz.pem sdk-go-${{ needs.verify.outputs.tag }}.tar.gz
       - name: Upload signed artifacts to release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            stackure-go-${{ needs.verify.outputs.tag }}.tar.gz
-            stackure-go-${{ needs.verify.outputs.tag }}.tar.gz.sig
-            stackure-go-${{ needs.verify.outputs.tag }}.tar.gz.pem
+            sdk-go-${{ needs.verify.outputs.tag }}.tar.gz
+            sdk-go-${{ needs.verify.outputs.tag }}.tar.gz.sig
+            sdk-go-${{ needs.verify.outputs.tag }}.tar.gz.pem
           generate_release_notes: true
 
   prime-proxy:

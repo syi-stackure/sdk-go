@@ -4,7 +4,7 @@
 
 Do **not** file a public GitHub issue for security vulnerabilities.
 
-Report privately via **[GitHub Security Advisories](https://github.com/stackure/stackure-go/security/advisories/new)**. This routes the report directly to the maintainer and keeps the disclosure channel private until a fix is ready.
+Report privately via **[GitHub Security Advisories](https://github.com/syi-stackure/sdk-go/security/advisories/new)**. This routes the report directly to the maintainer and keeps the disclosure channel private until a fix is ready.
 
 Please include:
 
@@ -27,11 +27,11 @@ Verify a release archive:
 ```bash
 # Replace <tag> with the release tag (e.g. v0.1.0)
 cosign verify-blob \
-  --certificate stackure-go-<tag>.tar.gz.pem \
-  --signature stackure-go-<tag>.tar.gz.sig \
-  --certificate-identity-regexp "^https://github.com/stackure/stackure-go/.github/workflows/release.yml@.*$" \
+  --certificate sdk-go-<tag>.tar.gz.pem \
+  --signature sdk-go-<tag>.tar.gz.sig \
+  --certificate-identity-regexp "^https://github.com/syi-stackure/sdk-go/.github/workflows/release.yml@.*$" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  stackure-go-<tag>.tar.gz
+  sdk-go-<tag>.tar.gz
 ```
 
 SLSA provenance can be verified with the [slsa-verifier](https://github.com/slsa-framework/slsa-verifier) CLI.

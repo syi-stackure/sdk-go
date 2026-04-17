@@ -5,8 +5,8 @@
 Requires Go `stable` (see `go.mod` for the minimum version).
 
 ```bash
-git clone https://github.com/stackure/stackure-go.git
-cd stackure-go
+git clone https://github.com/syi-stackure/sdk-go.git
+cd sdk-go
 make ci
 ```
 
