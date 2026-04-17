@@ -1,85 +1,91 @@
-name: Release
+name: Release on VERSION bump
 
 on:
   push:
-    tags:
-      - "v*.*.*"
+    branches: [main]
 
 permissions:
   contents: write
   id-token: write
   attestations: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  verify:
-    name: Verify build
+  check:
     runs-on: ubuntu-latest
     outputs:
-      module: ${{ steps.module.outputs.module }}
-      tag: ${{ steps.tag.outputs.tag }}
+      skip: ${{ steps.gate.outputs.skip }}
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
         with:
-          go-version: stable
-          cache: true
-      - run: go build ./...
-      - id: module
-        run: echo "module=$(go list -m)" >> "$GITHUB_OUTPUT"
-      - id: tag
-        run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fetch-depth: 0
+      - name: Read version
+        id: v
+        run: |
+          version=$(cat VERSION | tr -d '[:space:]')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+      - name: Should release?
+        id: gate
+        run: |
+          if git rev-parse --verify "refs/tags/${{ steps.v.outputs.tag }}" >/dev/null 2>&1; then
+            echo "Tag ${{ steps.v.outputs.tag }} already exists. Skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
 
-  provenance:
-    name: SLSA provenance
-    needs: verify
-    permissions:
-      id-token: write
-      contents: write
-      actions: read
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
-    with:
-      base64-subjects: ${{ needs.verify.outputs.module }}
-      upload-assets: true
-
-  attest:
-    name: Attest + sign
-    needs: verify
+  release:
+    needs: check
+    if: needs.check.outputs.skip == 'false'
     runs-on: ubuntu-latest
     permissions:
       contents: write
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
         with:
           go-version: stable
-      - name: Create source archive
-        run: git archive --format=tar.gz -o "sdk-go-${{ needs.verify.outputs.tag }}.tar.gz" HEAD
-      - name: Attest archive
-        uses: actions/attest-build-provenance@v2
-        with:
-          subject-path: "sdk-go-${{ needs.verify.outputs.tag }}.tar.gz"
-      - name: Install cosign
-        uses: sigstore/cosign-installer@v3
-      - name: Sign archive (keyless)
-        run: cosign sign-blob --yes --output-signature sdk-go-${{ needs.verify.outputs.tag }}.tar.gz.sig --output-certificate sdk-go-${{ needs.verify.outputs.tag }}.tar.gz.pem sdk-go-${{ needs.verify.outputs.tag }}.tar.gz
-      - name: Upload signed artifacts to release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            sdk-go-${{ needs.verify.outputs.tag }}.tar.gz
-            sdk-go-${{ needs.verify.outputs.tag }}.tar.gz.sig
-            sdk-go-${{ needs.verify.outputs.tag }}.tar.gz.pem
-          generate_release_notes: true
-
-  prime-proxy:
-    name: Prime Go module proxy
-    needs: [verify, attest]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Fetch module info
+      - run: go build ./...
+      - name: Create + push tag
         run: |
-          MODULE="${{ needs.verify.outputs.module }}"
-          TAG="${{ needs.verify.outputs.tag }}"
-          curl -sSf "https://proxy.golang.org/$MODULE/@v/$TAG.info" > /dev/null
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${{ needs.check.outputs.tag }}"
+          git push origin "${{ needs.check.outputs.tag }}"
+      - name: Source archive
+        run: git archive --format=tar.gz -o "sdk-go-${{ needs.check.outputs.tag }}.tar.gz" HEAD
+      - name: Attest provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: "sdk-go-${{ needs.check.outputs.tag }}.tar.gz"
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4
+      - name: Sign archive
+        run: |
+          cosign sign-blob --yes \
+            --output-signature "sdk-go-${{ needs.check.outputs.tag }}.tar.gz.sig" \
+            --output-certificate "sdk-go-${{ needs.check.outputs.tag }}.tar.gz.pem" \
+            "sdk-go-${{ needs.check.outputs.tag }}.tar.gz"
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.check.outputs.tag }}
+          files: |
+            sdk-go-${{ needs.check.outputs.tag }}.tar.gz
+            sdk-go-${{ needs.check.outputs.tag }}.tar.gz.sig
+            sdk-go-${{ needs.check.outputs.tag }}.tar.gz.pem
+          generate_release_notes: true
+      - name: Prime Go proxy
+        run: |
+          module=$(go list -m)
+          curl -sSf "https://proxy.golang.org/$module/@v/${{ needs.check.outputs.tag }}.info" > /dev/null

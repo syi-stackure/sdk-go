@@ -1,14 +1,13 @@
 // Package stackure is the Go SDK for the Stackure authentication API.
 //
 // Stackure provides passwordless B2B authentication. This SDK wraps the
-// public API and offers an HTTP middleware, a non-throwing verifier, and
-// direct client methods for the authentication flow.
+// public API behind four free functions and a middleware.
 //
 // # Quickstart
 //
 // Protect an HTTP route:
 //
-//	http.Handle("/admin", stackure.Auth("my-app-id", stackure.Roles("admin"))(handler))
+//	http.Handle("/admin", stackure.Auth("my-app-id", "admin")(handler))
 //
 // Access the authenticated user inside the handler:
 //
@@ -25,33 +24,39 @@
 //
 //	_, err := stackure.SendMagicLink("user@example.com", "my-app-id")
 //
+// Log the user out:
+//
+//	err := stackure.Logout(r.Cookies())
+//
 // # Content negotiation
 //
 // The Auth middleware inspects the Accept header. Browser requests (Accept:
 // text/html) redirect to the sign-in URL on 401. API requests (Accept:
-// application/json) receive a JSON error body. This lets the same middleware
-// serve both front-end and back-end routes.
+// application/json) receive a JSON error body.
 //
-// # Retry and timeouts
+// # Configuration
 //
-// The client retries 5xx responses with exponential backoff and never retries
-// timeouts. These behaviors are not configurable: the SDK ships with sensible
-// defaults so callers do not have to tune them.
+// The SDK has no configuration API. Point it at a non-production environment
+// by setting the STACKURE_BASE_URL environment variable before the first call:
 //
-// # Typed errors
+//	os.Setenv("STACKURE_BASE_URL", "https://stage.stackure.com")
 //
-// All errors from this package implement the error interface and can be
-// distinguished with errors.As:
+// Retry-on-5xx (two attempts with exponential backoff) and the 10-second
+// request timeout are hard-coded. Timeouts are never retried.
 //
-//	var authErr *stackure.AuthenticationError
-//	if errors.As(err, &authErr) { /* ... */ }
+// # Errors
 //
-// Error types: ValidationError, NetworkError, AuthenticationError,
-// TimeoutError, ForbiddenError.
+// All errors returned from this package are *StackureError. Inspect the
+// Code field to branch on category:
+//
+//	var se *stackure.StackureError
+//	if errors.As(err, &se) {
+//	    // se.Code is one of: "validation", "auth", "forbidden", "timeout", "network"
+//	}
 //
 // # API stability
 //
 // Pre-v1.0 releases are experimental; breaking changes may occur between
 // minor versions. Starting at v1.0.0, this package follows strict Semantic
-// Versioning: breaking changes only on major-version bumps.
+// Versioning.
 package stackure

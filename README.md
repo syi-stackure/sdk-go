@@ -20,7 +20,7 @@ go get github.com/syi-stackure/sdk-go
 ```go
 import "github.com/syi-stackure/sdk-go"
 
-http.Handle("/admin", stackure.Auth("my-app-id", stackure.Roles("admin"))(handler))
+http.Handle("/admin", stackure.Auth("my-app-id", "admin")(handler))
 ```
 
 Access the authenticated user in your handler:
@@ -45,49 +45,50 @@ if !result.Authenticated {
 // result.User
 ```
 
-## Client functions
+## Send a magic link
 
 ```go
 resp, err := stackure.SendMagicLink("user@example.com", "my-app-id")
-resp, err := stackure.SignIn("my-app-id", "user@example.com")
+// resp.Message
+```
 
-session, err := stackure.ValidateSession("my-app-id", r.Cookies())
-// session.Authenticated, session.User, session.SignInURL
+## Log out
 
+```go
 err := stackure.Logout(r.Cookies())
 ```
 
-## Custom client
+## Configuration
 
-```go
-client := stackure.NewClient(stackure.Config{
-    BaseURL: "https://staging.stackure.com",
-    Timeout: 5 * time.Second,
-})
+Set `STACKURE_BASE_URL` to point at a non-production environment:
+
+```bash
+export STACKURE_BASE_URL=https://stage.stackure.com
 ```
 
 ## Errors
 
-`ValidationError` | `NetworkError` | `AuthenticationError` | `TimeoutError` | `ForbiddenError`
-
-Distinguish with `errors.As`:
+All errors are `*stackure.StackureError`. Switch on `.Code`:
 
 ```go
-var authErr *stackure.AuthenticationError
-if errors.As(err, &authErr) { /* ... */ }
+import "errors"
+
+var se *stackure.StackureError
+if errors.As(err, &se) {
+    switch se.Code {
+    case "validation", "auth", "forbidden", "timeout", "network":
+        // ...
+    }
+}
 ```
-
-## Docs
-
-Full API reference lives on [pkg.go.dev](https://pkg.go.dev/github.com/syi-stackure/sdk-go).
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md). Commit messages must follow [Conventional Commits](https://www.conventionalcommits.org/) — release-please depends on this.
+Open a PR. Tag a release when ready: `git tag vX.Y.Z && git push --tags` — the release workflow builds, signs, and publishes.
 
 ## Security
 
-See [SECURITY.md](./SECURITY.md). Releases are signed with [cosign](https://www.sigstore.dev/) and ship with [SLSA v1.0 provenance](https://slsa.dev/spec/v1.0/).
+Report vulnerabilities via [GitHub Security Advisories](https://github.com/syi-stackure/sdk-go/security/advisories/new). Releases are signed with [cosign](https://www.sigstore.dev/) and carry [GitHub build-provenance attestations](https://docs.github.com/en/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds).
 
 ## License
 

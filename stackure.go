@@ -8,17 +8,31 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
 
 const (
 	defaultBaseURL = "https://stackure.com"
-	defaultTimeout = 10 * time.Second
+	requestTimeout = 10 * time.Second
 	maxRetries     = 2
 )
 
-// ---------- Types ----------
+// httpClient is the shared HTTP client used by all SDK calls. The timeout is
+// not configurable; callers who need a different ceiling can wrap the package
+// with their own transport.
+var httpClient = &http.Client{Timeout: requestTimeout}
+
+// baseURL resolves from the STACKURE_BASE_URL environment variable at call
+// time, falling back to the public Stackure API. This is the only way to
+// point the SDK at staging or local environments — no code-level override.
+func baseURL() string {
+	if v := os.Getenv("STACKURE_BASE_URL"); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+	return defaultBaseURL
+}
 
 // User represents an authenticated user returned from Stackure.
 type User struct {
@@ -29,80 +43,39 @@ type User struct {
 	UserRoles     []string `json:"user_roles"`
 }
 
-// SessionValidationResponse is the response from a session validation request.
-type SessionValidationResponse struct {
-	Authenticated bool   `json:"authenticated"`
-	User          *User  `json:"user,omitempty"`
-	SignInURL     string `json:"sign_in_url,omitempty"`
-}
-
-// MagicLinkResponse is the response from a magic-link send request.
+// MagicLinkResponse is returned from SendMagicLink when the request succeeds.
 type MagicLinkResponse struct {
 	Message string `json:"message"`
-	Token   string `json:"token,omitempty"`
 }
 
-// Config holds configuration options for the Stackure client.
-type Config struct {
-	// BaseURL is the base URL of the Stackure API. Default: "https://stackure.com"
-	BaseURL string
-	// Timeout is the HTTP request timeout. Default: 10s
-	Timeout time.Duration
-}
-
-// VerifyError contains error details from a failed verification.
+// VerifyError describes why a verification failed. Present on VerifyResult
+// when Authenticated is false.
 type VerifyError struct {
 	Code      int    `json:"code"`
 	Message   string `json:"message"`
 	SignInURL string `json:"sign_in_url,omitempty"`
 }
 
-// VerifyResult is the result of an authentication verification check.
+// VerifyResult is the outcome of a Verify call. Exactly one of Error or User
+// is populated depending on Authenticated.
 type VerifyResult struct {
 	Authenticated bool
 	User          *User
 	Error         *VerifyError
 }
 
-// ---------- Client ----------
-
-// Client is an HTTP client for the Stackure authentication API.
-type Client struct {
-	baseURL    string
-	timeout    time.Duration
-	httpClient *http.Client
+// sessionValidationResponse is the wire format returned by the session-validate
+// endpoint. Internal; callers interact with VerifyResult instead.
+type sessionValidationResponse struct {
+	Authenticated bool   `json:"authenticated"`
+	User          *User  `json:"user,omitempty"`
+	SignInURL     string `json:"sign_in_url,omitempty"`
 }
 
-// NewClient creates a new Stackure client. If no Config is provided, defaults
-// are used (base URL: https://stackure.com, timeout: 10s).
-func NewClient(config ...Config) *Client {
-	baseURL := defaultBaseURL
-	timeout := defaultTimeout
-
-	if len(config) > 0 {
-		cfg := config[0]
-		if cfg.BaseURL != "" {
-			baseURL = strings.TrimRight(cfg.BaseURL, "/")
-		}
-		if cfg.Timeout > 0 {
-			timeout = cfg.Timeout
-		}
-	}
-
-	return &Client{
-		baseURL: baseURL,
-		timeout: timeout,
-		httpClient: &http.Client{
-			Timeout: timeout,
-		},
-	}
-}
-
-// request performs an HTTP request with retry logic.
-// Retries up to 2 times on 5xx errors with exponential backoff (500ms, 1s).
-// Timeouts are never retried.
-func (c *Client) request(ctx context.Context, method, path string, body interface{}, cookies []*http.Cookie, query url.Values) (*http.Response, error) {
-	fullURL := c.baseURL + path
+// request performs an HTTP request with retry on 5xx (exponential backoff:
+// 500ms, 1s) and no retry on timeouts. All SDK calls go through this helper.
+func request(ctx context.Context, method, path string, body any, cookies []*http.Cookie, query url.Values) (*http.Response, error) {
+	fullURL := baseURL() + path
 	if len(query) > 0 {
 		fullURL += "?" + query.Encode()
 	}
@@ -111,7 +84,6 @@ func (c *Client) request(ctx context.Context, method, path string, body interfac
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
-			// Exponential backoff: 500ms, 1000ms
 			backoff := time.Duration(500*(1<<(attempt-1))) * time.Millisecond
 			time.Sleep(backoff)
 		}
@@ -120,14 +92,14 @@ func (c *Client) request(ctx context.Context, method, path string, body interfac
 		if body != nil {
 			jsonBytes, err := json.Marshal(body)
 			if err != nil {
-				return nil, NewNetworkError(fmt.Sprintf("Failed to marshal request body: %v", err), 0)
+				return nil, newErr("network", 0, fmt.Sprintf("failed to marshal request body: %v", err))
 			}
 			bodyReader = bytes.NewReader(jsonBytes)
 		}
 
 		req, err := http.NewRequestWithContext(ctx, method, fullURL, bodyReader)
 		if err != nil {
-			return nil, NewNetworkError(fmt.Sprintf("Failed to create request: %v", err), 0)
+			return nil, newErr("network", 0, fmt.Sprintf("failed to create request: %v", err))
 		}
 
 		if body != nil {
@@ -138,20 +110,18 @@ func (c *Client) request(ctx context.Context, method, path string, body interfac
 			req.AddCookie(cookie)
 		}
 
-		resp, err := c.httpClient.Do(req)
+		resp, err := httpClient.Do(req)
 		if err != nil {
-			// Check if the error is a timeout — do not retry timeouts.
 			if ctx.Err() == context.DeadlineExceeded || isTimeoutError(err) {
-				return nil, NewTimeoutError(fmt.Sprintf("Request timed out after %s", c.timeout))
+				return nil, newErr("timeout", 0, fmt.Sprintf("request timed out after %s", requestTimeout))
 			}
-			lastErr = NewNetworkError(fmt.Sprintf("Network request failed: %v", err), 0)
+			lastErr = newErr("network", 0, fmt.Sprintf("network request failed: %v", err))
 			continue
 		}
 
-		// Retry 5xx errors unless this is the last attempt.
 		if resp.StatusCode >= 500 && attempt < maxRetries {
 			resp.Body.Close()
-			lastErr = NewNetworkError(fmt.Sprintf("Server error (%d)", resp.StatusCode), resp.StatusCode)
+			lastErr = newErr("network", resp.StatusCode, fmt.Sprintf("server error (%d)", resp.StatusCode))
 			continue
 		}
 
@@ -161,10 +131,11 @@ func (c *Client) request(ctx context.Context, method, path string, body interfac
 	if lastErr != nil {
 		return nil, lastErr
 	}
-	return nil, NewNetworkError("Request failed after retries", 0)
+	return nil, newErr("network", 0, "request failed after retries")
 }
 
-// isTimeoutError checks whether an error is a timeout.
+// isTimeoutError checks whether an error implements the standard Timeout()
+// bool interface exposed by net/http and net.
 func isTimeoutError(err error) bool {
 	type timeout interface {
 		Timeout() bool
@@ -175,37 +146,40 @@ func isTimeoutError(err error) bool {
 	return false
 }
 
-// handleResponse reads the response body and returns the parsed JSON.
-// It returns an appropriate error for non-2xx status codes.
-func handleResponse(resp *http.Response) (map[string]interface{}, error) {
+// handleResponse reads the response body and returns the parsed JSON or a
+// typed StackureError for non-2xx responses.
+func handleResponse(resp *http.Response) (map[string]any, error) {
 	defer resp.Body.Close()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, NewNetworkError("Failed to read response body", resp.StatusCode)
+		return nil, newErr("network", resp.StatusCode, "failed to read response body")
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		errorText := string(bodyBytes)
 		if errorText == "" {
-			errorText = "Unknown error"
+			errorText = "unknown error"
 		}
 		if resp.StatusCode == 401 {
-			return nil, NewAuthenticationError(errorText)
+			return nil, newErr("auth", 401, errorText)
 		}
-		return nil, NewNetworkError(fmt.Sprintf("API error (%d): %s", resp.StatusCode, errorText), resp.StatusCode)
+		if resp.StatusCode == 403 {
+			return nil, newErr("forbidden", 403, errorText)
+		}
+		return nil, newErr("network", resp.StatusCode, fmt.Sprintf("api error (%d): %s", resp.StatusCode, errorText))
 	}
 
-	var data map[string]interface{}
+	var data map[string]any
 	if err := json.Unmarshal(bodyBytes, &data); err != nil {
-		return nil, NewNetworkError("Invalid JSON response from server", resp.StatusCode)
+		return nil, newErr("network", resp.StatusCode, "invalid JSON response from server")
 	}
 	return data, nil
 }
 
-// SendMagicLink sends a magic-link authentication email to a user.
-// The appID parameter is optional; pass an empty variadic to omit it.
-func (c *Client) SendMagicLink(email string, appID ...string) (*MagicLinkResponse, error) {
+// SendMagicLink sends a passwordless sign-in email to the user. The appID is
+// optional; when omitted, the link lands on stackure.com's app launcher.
+func SendMagicLink(email string, appID ...string) (*MagicLinkResponse, error) {
 	if err := validateEmail(email); err != nil {
 		return nil, err
 	}
@@ -219,7 +193,7 @@ func (c *Client) SendMagicLink(email string, appID ...string) (*MagicLinkRespons
 		body["app_id"] = appID[0]
 	}
 
-	resp, err := c.request(context.Background(), http.MethodPost, "/api/public/auth/magic-link/send", body, nil, nil)
+	resp, err := request(context.Background(), http.MethodPost, "/api/public/auth/magic-link/send", body, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -233,20 +207,19 @@ func (c *Client) SendMagicLink(email string, appID ...string) (*MagicLinkRespons
 	if msg, ok := data["message"].(string); ok {
 		result.Message = msg
 	}
-	if token, ok := data["token"].(string); ok {
-		result.Token = token
-	}
 	return result, nil
 }
 
-// ValidateSession validates the current session for an application.
-func (c *Client) ValidateSession(appID string, cookies []*http.Cookie) (*SessionValidationResponse, error) {
+// ValidateSession checks whether the given cookies hold a valid session for
+// the app. It is used internally by Verify and Auth; most callers prefer
+// those higher-level helpers.
+func ValidateSession(appID string, cookies []*http.Cookie) (*sessionValidationResponse, error) {
 	if err := validateUUID(appID, "App ID"); err != nil {
 		return nil, err
 	}
 
 	query := url.Values{"app_id": {appID}}
-	resp, err := c.request(context.Background(), http.MethodGet, "/api/public/auth/session/validate", nil, cookies, query)
+	resp, err := request(context.Background(), http.MethodGet, "/api/public/auth/session/validate", nil, cookies, query)
 	if err != nil {
 		return nil, err
 	}
@@ -256,15 +229,14 @@ func (c *Client) ValidateSession(appID string, cookies []*http.Cookie) (*Session
 		return nil, err
 	}
 
-	result := &SessionValidationResponse{}
+	result := &sessionValidationResponse{}
 	if auth, ok := data["authenticated"].(bool); ok {
 		result.Authenticated = auth
 	}
 	if signInURL, ok := data["sign_in_url"].(string); ok {
 		result.SignInURL = signInURL
 	}
-
-	if userData, ok := data["user"].(map[string]interface{}); ok {
+	if userData, ok := data["user"].(map[string]any); ok {
 		user := &User{}
 		if v, ok := userData["user_id"].(string); ok {
 			user.UserID = v
@@ -278,7 +250,7 @@ func (c *Client) ValidateSession(appID string, cookies []*http.Cookie) (*Session
 		if v, ok := userData["user_last_name"].(string); ok {
 			user.UserLastName = v
 		}
-		if roles, ok := userData["user_roles"].([]interface{}); ok {
+		if roles, ok := userData["user_roles"].([]any); ok {
 			for _, r := range roles {
 				if s, ok := r.(string); ok {
 					user.UserRoles = append(user.UserRoles, s)
@@ -291,48 +263,12 @@ func (c *Client) ValidateSession(appID string, cookies []*http.Cookie) (*Session
 	return result, nil
 }
 
-// Logout signs out the current user from all Stackure applications.
-func (c *Client) Logout(cookies []*http.Cookie) error {
-	resp, err := c.request(context.Background(), http.MethodPost, "/api/public/auth/sign-out", nil, cookies, nil)
+// Logout revokes the session represented by the given cookies.
+func Logout(cookies []*http.Cookie) error {
+	resp, err := request(context.Background(), http.MethodPost, "/api/public/auth/sign-out", nil, cookies, nil)
 	if err != nil {
 		return err
 	}
 	_, err = handleResponse(resp)
 	return err
-}
-
-// SignIn initiates sign-in for a user. When email is provided, sends a
-// magic-link directly. When omitted, returns nil.
-func (c *Client) SignIn(appID string, email ...string) (*MagicLinkResponse, error) {
-	if err := validateUUID(appID, "App ID"); err != nil {
-		return nil, err
-	}
-	if len(email) > 0 && email[0] != "" {
-		return c.SendMagicLink(email[0], appID)
-	}
-	return nil, nil
-}
-
-// ---------- Default client (package-level convenience functions) ----------
-
-var defaultClient = NewClient()
-
-// SendMagicLink sends a magic-link authentication email using the default client.
-func SendMagicLink(email string, appID ...string) (*MagicLinkResponse, error) {
-	return defaultClient.SendMagicLink(email, appID...)
-}
-
-// ValidateSession validates a session using the default client.
-func ValidateSession(appID string, cookies []*http.Cookie) (*SessionValidationResponse, error) {
-	return defaultClient.ValidateSession(appID, cookies)
-}
-
-// Logout signs out the current user using the default client.
-func Logout(cookies []*http.Cookie) error {
-	return defaultClient.Logout(cookies)
-}
-
-// SignIn initiates sign-in using the default client.
-func SignIn(appID string, email ...string) (*MagicLinkResponse, error) {
-	return defaultClient.SignIn(appID, email...)
 }
