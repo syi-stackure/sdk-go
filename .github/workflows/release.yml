@@ -73,8 +73,7 @@ jobs:
       - name: Sign archive
         run: |
           cosign sign-blob --yes \
-            --output-signature "sdk-go-${{ needs.check.outputs.tag }}.tar.gz.sig" \
-            --output-certificate "sdk-go-${{ needs.check.outputs.tag }}.tar.gz.pem" \
+            --bundle "sdk-go-${{ needs.check.outputs.tag }}.tar.gz.sigstore" \
             "sdk-go-${{ needs.check.outputs.tag }}.tar.gz"
       - name: GitHub Release
         uses: softprops/action-gh-release@v3
@@ -82,8 +81,7 @@ jobs:
           tag_name: ${{ needs.check.outputs.tag }}
           files: |
             sdk-go-${{ needs.check.outputs.tag }}.tar.gz
-            sdk-go-${{ needs.check.outputs.tag }}.tar.gz.sig
-            sdk-go-${{ needs.check.outputs.tag }}.tar.gz.pem
+            sdk-go-${{ needs.check.outputs.tag }}.tar.gz.sigstore
           generate_release_notes: true
       - name: Prime Go proxy
         run: |
