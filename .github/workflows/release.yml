@@ -57,7 +57,7 @@ jobs:
       - name: Create source archive
         run: git archive --format=tar.gz -o "sdk-go-${{ needs.verify.outputs.tag }}.tar.gz" HEAD
       - name: Attest archive
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: "sdk-go-${{ needs.verify.outputs.tag }}.tar.gz"
       - name: Install cosign
