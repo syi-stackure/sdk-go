@@ -1,6 +1,6 @@
 # Stackure Go SDK
 
-[![CI](https://github.com/syi-stackure/sdk-go/actions/workflows/ci.yml/badge.svg)](https://github.com/syi-stackure/sdk-go/actions/workflows/ci.yml)
+[![Check build](https://github.com/syi-stackure/sdk-go/actions/workflows/check-build.yml/badge.svg)](https://github.com/syi-stackure/sdk-go/actions/workflows/check-build.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/syi-stackure/sdk-go.svg)](https://pkg.go.dev/github.com/syi-stackure/sdk-go)
 [![Go Report Card](https://goreportcard.com/badge/github.com/syi-stackure/sdk-go)](https://goreportcard.com/report/github.com/syi-stackure/sdk-go)
 [![Latest release](https://img.shields.io/github/v/release/syi-stackure/sdk-go?sort=semver)](https://github.com/syi-stackure/sdk-go/releases)
