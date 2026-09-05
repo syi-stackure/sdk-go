@@ -57,9 +57,25 @@ func hasAnyPerm(have, want []string) bool {
 	return false
 }
 
+func handoffToken(r *http.Request) string {
+	if tok := r.URL.Query().Get(tokenParam); tok != "" {
+		return tok
+	}
+	if r.Method != http.MethodPost {
+		return ""
+	}
+	if _, err := r.Cookie(sessionCookie); err == nil {
+		return ""
+	}
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-www-form-urlencoded") {
+		return ""
+	}
+	return r.PostFormValue(tokenParam)
+}
+
 func adoptToken(w http.ResponseWriter, r *http.Request) bool {
-	tok := r.URL.Query().Get(tokenParam)
-	if tok == "" || r.Method != http.MethodGet {
+	tok := handoffToken(r)
+	if tok == "" {
 		return false
 	}
 
@@ -83,11 +99,11 @@ func adoptToken(w http.ResponseWriter, r *http.Request) bool {
 func Auth(appID string, perms ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			result := Verify(appID, r, perms...)
-
-			if result.Authenticated && adoptToken(w, r) {
+			if adoptToken(w, r) {
 				return
 			}
+
+			result := Verify(appID, r, perms...)
 
 			if !result.Authenticated && result.Error != nil {
 				if result.Error.Code == 401 {
