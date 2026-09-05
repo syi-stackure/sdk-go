@@ -3,28 +3,25 @@ package stackure_test
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 
 	stackure "stackure.com/sdk-go"
 )
 
-// Auth wraps a handler so only authenticated users holding the "admin" role
-// reach it. The authenticated user is available via UserFromContext.
+const appID = "7f3c1a2e-9b4d-4e6f-8a1b-2c3d4e5f6071"
+
 func ExampleAuth() {
 	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user := stackure.UserFromContext(r.Context())
 		fmt.Fprintf(w, "hello %s", user.UserEmail)
 	})
 
-	http.Handle("/admin", stackure.Auth("my-app-id", "admin")(protected))
+	http.Handle("/admin", stackure.Auth(appID, "view_any_app")(protected))
 }
 
-// Verify checks a request's session without middleware, letting the caller
-// decide how to handle failure.
 func ExampleVerify() {
-	http.HandleFunc("/admin", func(w http.ResponseWriter, r *http.Request) {
-		result := stackure.Verify("my-app-id", r, "admin")
+	http.HandleFunc("/report", func(w http.ResponseWriter, r *http.Request) {
+		result := stackure.Verify(appID, r, "view_any_app")
 		if !result.Authenticated {
 			http.Error(w, result.Error.Message, result.Error.Code)
 			return
@@ -33,7 +30,6 @@ func ExampleVerify() {
 	})
 }
 
-// UserFromContext reads the user stored by the Auth middleware.
 func ExampleUserFromContext() {
 	http.HandleFunc("/me", func(w http.ResponseWriter, r *http.Request) {
 		user := stackure.UserFromContext(r.Context())
@@ -45,28 +41,20 @@ func ExampleUserFromContext() {
 	})
 }
 
-// SendMagicLink emails a passwordless sign-in link to the user.
 func ExampleSendMagicLink() {
-	resp, err := stackure.SendMagicLink("user@example.com", "my-app-id")
+	resp, err := stackure.SendMagicLink("user@example.com", appID)
 	if err != nil {
-		log.Fatal(err)
+		return
 	}
 	fmt.Println(resp.Message)
 }
 
-// Logout revokes the session carried by the request's cookies.
 func ExampleLogout() {
 	http.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {
-		if err := stackure.Logout(r.Cookies()); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		fmt.Fprintln(w, "signed out")
+		stackure.Logout(w, r)
 	})
 }
 
-// Every SDK function returns *StackureError; branch on Code to react to each
-// category.
 func ExampleStackureError() {
 	_, err := stackure.SendMagicLink("not-an-email")
 	var se *stackure.StackureError

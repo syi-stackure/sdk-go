@@ -7,7 +7,9 @@
 //
 // Protect an HTTP route:
 //
-//	http.Handle("/admin", stackure.Auth("my-app-id", "admin")(handler))
+//	http.Handle("/admin", stackure.Auth(appID, "view_any_app")(handler))
+//
+// appID is the app's UUID as registered in Stackure.
 //
 // Access the authenticated user inside the handler:
 //
@@ -15,18 +17,40 @@
 //
 // Manual verification without middleware:
 //
-//	result := stackure.Verify("my-app-id", r)
+//	result := stackure.Verify(appID, r)
 //	if result.Authenticated {
 //	    // use result.User
 //	}
 //
 // Send a magic-link email:
 //
-//	_, err := stackure.SendMagicLink("user@example.com", "my-app-id")
+//	_, err := stackure.SendMagicLink("user@example.com", appID)
 //
 // Log the user out:
 //
-//	err := stackure.Logout(r.Cookies())
+//	stackure.Logout(w, r)
+//
+// # Sign-in handoff
+//
+// Stackure's session cookie is scoped to the Stackure host and is never
+// visible to your app. After a successful magic-link sign-in, Stackure
+// redirects the browser back to the app's registered URL with a
+// session_token query parameter.
+//
+// The Auth middleware consumes that parameter automatically: it stores the
+// token in a cookie on your own domain and redirects to the same URL with the
+// parameter stripped, so the token does not linger in the address bar.
+//
+// # Session binding
+//
+// Stackure binds each session to the browser's user agent and IP address.
+// Because the SDK validates from your server rather than the browser, it
+// forwards the original User-Agent and X-Forwarded-For on every validation
+// call. Your app must therefore see the real client IP: if it sits behind a
+// proxy or CDN, ensure that layer sets X-Forwarded-For correctly.
+//
+// Every request is validated against Stackure, so revoking a session takes
+// effect immediately.
 //
 // # Content negotiation
 //
@@ -41,8 +65,8 @@
 //
 //	os.Setenv("STACKURE_BASE_URL", "https://stage.stackure.com")
 //
-// Retry-on-5xx (two attempts with exponential backoff) and the 10-second
-// request timeout are hard-coded. Timeouts are never retried.
+// Retry-on-5xx (one retry after 500ms) and the 2-second request timeout are
+// hard-coded. Timeouts are never retried.
 //
 // # Errors
 //

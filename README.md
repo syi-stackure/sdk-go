@@ -22,23 +22,35 @@ go get stackure.com/sdk-go
 ```go
 import "stackure.com/sdk-go"
 
-http.Handle("/admin", stackure.Auth("my-app-id", "admin")(handler))
+const appID = "7f3c1a2e-9b4d-4e6f-8a1b-2c3d4e5f6071" // your app's UUID in Stackure
+
+http.Handle("/admin", stackure.Auth(appID, "view_any_app")(handler))
 ```
 
 Access the authenticated user in your handler:
 
 ```go
 user := stackure.UserFromContext(r.Context())
-fmt.Println(user.UserEmail, user.UserRoles)
+fmt.Println(user.UserEmail, user.UserPermissions)
 ```
 
 - API requests get JSON errors
 - Browser requests get redirected to sign-in
+- The sign-in handoff is automatic: Stackure redirects back with `?session_token=`, the middleware stores it as a cookie on your domain and strips it from the URL
+
+## Requirements
+
+Stackure binds sessions to the browser's user agent and IP. The SDK validates
+from your server, so it forwards the original `User-Agent` and
+`X-Forwarded-For`. Your app must see the real client IP — if it runs behind a
+proxy or CDN, make sure that layer sets `X-Forwarded-For`.
+
+Every request is validated against Stackure, so revocation is immediate.
 
 ## Verify manually
 
 ```go
-result := stackure.Verify("my-app-id", r)
+result := stackure.Verify(appID, r)
 
 if !result.Authenticated {
     // result.Error.Code, result.Error.Message, result.Error.SignInURL
@@ -50,15 +62,17 @@ if !result.Authenticated {
 ## Send a magic link
 
 ```go
-resp, err := stackure.SendMagicLink("user@example.com", "my-app-id")
+resp, err := stackure.SendMagicLink("user@example.com", appID)
 // resp.Message
 ```
 
 ## Log out
 
 ```go
-err := stackure.Logout(r.Cookies())
+stackure.Logout(w, r)
 ```
+
+Clears the app's cookie and redirects to Stackure's sign-out.
 
 ## Configuration
 
