@@ -1,24 +1,26 @@
 # Stackure Go SDK
 
 [![Check build](https://github.com/syi-stackure/sdk-go/actions/workflows/check-build.yml/badge.svg)](https://github.com/syi-stackure/sdk-go/actions/workflows/check-build.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/syi-stackure/sdk-go.svg)](https://pkg.go.dev/github.com/syi-stackure/sdk-go)
-[![Go Report Card](https://goreportcard.com/badge/github.com/syi-stackure/sdk-go)](https://goreportcard.com/report/github.com/syi-stackure/sdk-go)
+[![Go Reference](https://pkg.go.dev/badge/stackure.com/sdk-go.svg)](https://pkg.go.dev/stackure.com/sdk-go)
+[![Go Report Card](https://goreportcard.com/badge/stackure.com/sdk-go)](https://goreportcard.com/report/stackure.com/sdk-go)
 [![Latest release](https://img.shields.io/github/v/release/syi-stackure/sdk-go?sort=semver)](https://github.com/syi-stackure/sdk-go/releases)
 [![Go version](https://img.shields.io/github/go-mod/go-version/syi-stackure/sdk-go)](./go.mod)
 [![SLSA 3](https://slsa.dev/images/gh-badge-level3.svg)](https://slsa.dev)
 
-Authentication for your app. One line. Zero dependencies.
+Passwordless magic-link authentication SDK for Go — drop-in `net/http` middleware, zero dependencies.
+
+Protect a route with one line, or verify sessions and send magic links directly against the [Stackure](https://stackure.com) auth API.
 
 ## Install
 
 ```bash
-go get github.com/syi-stackure/sdk-go
+go get stackure.com/sdk-go
 ```
 
 ## Protect a route
 
 ```go
-import "github.com/syi-stackure/sdk-go"
+import "stackure.com/sdk-go"
 
 http.Handle("/admin", stackure.Auth("my-app-id", "admin")(handler))
 ```
