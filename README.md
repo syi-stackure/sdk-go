@@ -36,7 +36,7 @@ fmt.Println(user.UserEmail, user.UserPermissions)
 
 - API requests get JSON errors
 - Browser requests get redirected to sign-in
-- The sign-in handoff is automatic: Stackure redirects back with `?session_token=`, the middleware stores it as a cookie on your domain and strips it from the URL
+- The sign-in handoff is automatic: Stackure hands the browser back with a `session_token`, the middleware stores it as a cookie on your domain and strips it from the URL
 
 ## Requirements
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -20,6 +21,7 @@ const (
 	tokenParam     = "session_token"
 	requestTimeout = 2 * time.Second
 	maxRetries     = 1
+	retryDelay     = 500 * time.Millisecond
 )
 
 var httpClient = &http.Client{Timeout: requestTimeout}
@@ -77,7 +79,7 @@ func request(ctx context.Context, method, path string, o callOpts) (*http.Respon
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
-			time.Sleep(time.Duration(500*(1<<(attempt-1))) * time.Millisecond)
+			time.Sleep(retryDelay)
 		}
 
 		var br io.Reader
@@ -108,7 +110,8 @@ func request(ctx context.Context, method, path string, o callOpts) (*http.Respon
 
 		resp, err := httpClient.Do(req)
 		if err != nil {
-			if ctx.Err() == context.DeadlineExceeded || isTimeoutError(err) {
+			var netErr net.Error
+			if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
 				return nil, newErr("timeout", 0, fmt.Sprintf("request timed out after %s", requestTimeout))
 			}
 			lastErr = newErr("network", 0, fmt.Sprintf("network request failed: %v", err))
@@ -126,14 +129,6 @@ func request(ctx context.Context, method, path string, o callOpts) (*http.Respon
 		return nil, lastErr
 	}
 	return nil, newErr("network", 0, "request failed after retries")
-}
-
-func isTimeoutError(err error) bool {
-	type timeout interface{ Timeout() bool }
-	if t, ok := err.(timeout); ok {
-		return t.Timeout()
-	}
-	return false
 }
 
 func handleResponse(resp *http.Response, out any) error {
