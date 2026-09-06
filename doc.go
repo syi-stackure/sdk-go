@@ -33,13 +33,13 @@
 // # Sign-in handoff
 //
 // Stackure's session cookie is scoped to the Stackure host and is never
-// visible to your app. After a successful magic-link sign-in, Stackure
-// redirects the browser back to the app's registered URL with a
-// session_token query parameter.
+// visible to your app. After a successful magic-link sign-in, Stackure hands
+// the browser back to the app's registered URL with a session_token, either as
+// a POST form field or as a query parameter.
 //
-// The Auth middleware consumes that parameter automatically: it stores the
-// token in a cookie on your own domain and redirects to the same URL with the
-// parameter stripped, so the token does not linger in the address bar.
+// The Auth middleware consumes both automatically: it stores the token in a
+// cookie on your own domain and redirects to the same URL with the parameter
+// stripped, so the token does not linger in the address bar.
 //
 // # Session binding
 //
@@ -78,9 +78,8 @@
 //	    // se.Code is one of: "validation", "auth", "forbidden", "timeout", "network"
 //	}
 //
-// # API stability
+// # Releases
 //
-// Pre-v1.0 releases are experimental; breaking changes may occur between
-// minor versions. Starting at v1.0.0, this package follows strict Semantic
-// Versioning.
+// Releases are cut from main automatically and versioned v1.YYYYMMDD.N. Each
+// one is signed with cosign and carries a GitHub build-provenance attestation.
 package stackure
