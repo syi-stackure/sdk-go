@@ -7,7 +7,7 @@
 //
 // Protect an HTTP route:
 //
-//	http.Handle("/admin", stackure.Auth(appID, "view_any_app")(handler))
+//	http.Handle("/admin", stackure.Auth(appID, "can_approve_invoice")(handler))
 //
 // appID is the app's UUID as registered in Stackure.
 //

@@ -24,7 +24,7 @@ import "stackure.com/sdk-go"
 
 const appID = "7f3c1a2e-9b4d-4e6f-8a1b-2c3d4e5f6071" // your app's UUID in Stackure
 
-http.Handle("/admin", stackure.Auth(appID, "view_any_app")(handler))
+http.Handle("/admin", stackure.Auth(appID, "can_approve_invoice")(handler))
 ```
 
 Access the authenticated user in your handler:

@@ -16,12 +16,12 @@ func ExampleAuth() {
 		fmt.Fprintf(w, "hello %s", user.UserEmail)
 	})
 
-	http.Handle("/admin", stackure.Auth(appID, "view_any_app")(protected))
+	http.Handle("/admin", stackure.Auth(appID, "can_approve_invoice")(protected))
 }
 
 func ExampleVerify() {
 	http.HandleFunc("/report", func(w http.ResponseWriter, r *http.Request) {
-		result := stackure.Verify(appID, r, "view_any_app")
+		result := stackure.Verify(appID, r, "can_approve_invoice")
 		if !result.Authenticated {
 			http.Error(w, result.Error.Message, result.Error.Code)
 			return
