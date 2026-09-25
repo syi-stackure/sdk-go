@@ -213,13 +213,16 @@ func ValidateSession(appID string, r *http.Request) (*Session, error) {
 		return nil, err
 	}
 
-	o := callOpts{
-		query: url.Values{"app_id": {appID}},
-		ua:    r.UserAgent(),
-		ip:    clientIP(r),
+	tok := sessionToken(r)
+	if !uuidRegex.MatchString(tok) {
+		return &Session{SignInURL: baseURL() + "/sign-in/magic-link?app_id=" + appID}, nil
 	}
-	if tok := sessionToken(r); tok != "" {
-		o.cookies = []*http.Cookie{{Name: sessionCookie, Value: tok}}
+
+	o := callOpts{
+		query:   url.Values{"app_id": {appID}},
+		ua:      r.UserAgent(),
+		ip:      clientIP(r),
+		cookies: []*http.Cookie{{Name: sessionCookie, Value: tok}},
 	}
 
 	resp, err := request(r.Context(), http.MethodGet, "/api/public/auth/session/validate", o)
