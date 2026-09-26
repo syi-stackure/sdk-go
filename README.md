@@ -43,7 +43,7 @@ Access the authenticated user in your handler:
 
 ```go
 user := stackure.UserFromContext(r.Context())
-fmt.Println(user.UserEmail, user.UserPermissions)
+fmt.Println(user.UserEmail, user.AccountID, user.UserPermissions)
 ```
 
 - API requests get JSON errors
