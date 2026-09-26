@@ -17,6 +17,18 @@ Protect a route with one line, or verify sessions and send magic links directly 
 go get stackure.com/sdk-go
 ```
 
+## Configure
+
+Set the app secret from the Stackure app page (shown once at registration and on each rotation):
+
+```bash
+export STACKURE_APP_SECRET=...
+```
+
+It is sent as `X-App-Secret` on every call. The first call that actually reaches Stackure fails with a `validation` error if it is unset. `STACKURE_BASE_URL` optionally overrides the API host (default `https://stackure.com`).
+
+Every call has one 2-second deadline. The SDK retries once after 500 ms on a 5xx response or a connection failure (refused, reset, DNS, TLS), only if more than 500 ms of the deadline remain; timeouts are never retried and surface as a `timeout` error.
+
 ## Protect a route
 
 ```go
@@ -36,14 +48,15 @@ fmt.Println(user.UserEmail, user.UserPermissions)
 
 - API requests get JSON errors
 - Browser requests get redirected to sign-in
-- The sign-in handoff is automatic: Stackure hands the browser back with a `session_token`, the middleware stores it as a cookie on your domain and strips it from the URL
+- The sign-in handoff is automatic: Stackure POSTs a `session_token` (an app-scoped session token valid only for this app) back to your app, the middleware validates it and stores it as a cookie on your domain. Handoff bodies over 4 KB are ignored and passed to your app untouched.
+
+Before testing sign-in: a newly registered app is not usable by anyone, even its creator, until it is shared with the organization or assigned to a team in Stackure.
 
 ## Requirements
 
-Stackure binds sessions to the browser's user agent and IP. The SDK validates
-from your server, so it forwards the original `User-Agent` and
-`X-Forwarded-For`. Your app must see the real client IP — if it runs behind a
-proxy or CDN, make sure that layer sets `X-Forwarded-For`.
+Sessions are not bound to the browser's user agent or IP. The SDK still
+forwards the original `User-Agent` and `X-Forwarded-For` when validating from
+your server, but they are informational only.
 
 Every request with a session token is validated against Stackure, so revocation
 is immediate. Requests without a well-formed token get the sign-in URL without a
@@ -76,14 +89,6 @@ stackure.Logout(w, r)
 
 Clears the app's cookie and redirects to Stackure's sign-out.
 
-## Configuration
-
-Set `STACKURE_BASE_URL` to point at a non-production environment:
-
-```bash
-export STACKURE_BASE_URL=https://stage.stackure.com
-```
-
 ## Errors
 
 All errors are `*stackure.StackureError`. Switch on `.Code`:
@@ -102,7 +107,7 @@ if errors.As(err, &se) {
 
 ## Contributing
 
-Open a PR. Tag a release when ready: `git tag vX.Y.Z && git push --tags` — the release workflow builds, signs, and publishes.
+Open a PR.
 
 ## Security
 

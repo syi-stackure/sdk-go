@@ -19,6 +19,7 @@ const (
 	defaultBaseURL = "https://stackure.com"
 	sessionCookie  = "session"
 	tokenParam     = "session_token"
+	maxHandoffBody = 4 << 10
 	requestTimeout = 2 * time.Second
 	maxRetries     = 1
 	retryDelay     = 500 * time.Millisecond
@@ -26,11 +27,26 @@ const (
 
 var httpClient = &http.Client{Timeout: requestTimeout}
 
+func origin() string {
+	u, err := url.Parse(baseURL())
+	if err != nil {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
+
 func baseURL() string {
 	if v := os.Getenv("STACKURE_BASE_URL"); v != "" {
 		return strings.TrimRight(v, "/")
 	}
 	return defaultBaseURL
+}
+
+func appSecret() (string, error) {
+	if v := os.Getenv("STACKURE_APP_SECRET"); v != "" {
+		return v, nil
+	}
+	return "", newErr("validation", 0, "STACKURE_APP_SECRET is not set")
 }
 
 type User struct {
@@ -70,34 +86,40 @@ type callOpts struct {
 	ua, ip  string
 }
 
-func request(ctx context.Context, method, path string, o callOpts) (*http.Response, error) {
+func request(ctx context.Context, method, path string, o callOpts) (int, []byte, error) {
+	secret, err := appSecret()
+	if err != nil {
+		return 0, nil, err
+	}
 	fullURL := baseURL() + path
 	if len(o.query) > 0 {
 		fullURL += "?" + o.query.Encode()
 	}
-
-	var lastErr error
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		if attempt > 0 {
-			time.Sleep(retryDelay)
+	var br []byte
+	if o.body != nil {
+		if br, err = json.Marshal(o.body); err != nil {
+			return 0, nil, newErr("network", 0, fmt.Sprintf("failed to marshal request body: %v", err))
 		}
-
-		var br io.Reader
-		if o.body != nil {
-			b, err := json.Marshal(o.body)
-			if err != nil {
-				return nil, newErr("network", 0, fmt.Sprintf("failed to marshal request body: %v", err))
-			}
-			br = bytes.NewReader(b)
+	}
+	deadline := time.Now().Add(requestTimeout)
+	ctx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+	fail := func(err error) (int, []byte, error) {
+		var netErr net.Error
+		if errors.Is(err, context.DeadlineExceeded) || ctx.Err() == context.DeadlineExceeded || (errors.As(err, &netErr) && netErr.Timeout()) {
+			return 0, nil, newErr("timeout", 0, fmt.Sprintf("request timed out after %s", requestTimeout))
 		}
-
-		req, err := http.NewRequestWithContext(ctx, method, fullURL, br)
+		return 0, nil, newErr("network", 0, fmt.Sprintf("network request failed: %v", err))
+	}
+	for attempt := 0; ; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, method, fullURL, bytes.NewReader(br))
 		if err != nil {
-			return nil, newErr("network", 0, fmt.Sprintf("failed to create request: %v", err))
+			return 0, nil, newErr("network", 0, fmt.Sprintf("failed to create request: %v", err))
 		}
 		if o.body != nil {
 			req.Header.Set("Content-Type", "application/json")
 		}
+		req.Header.Set("X-App-Secret", secret)
 		if o.ua != "" {
 			req.Header.Set("User-Agent", o.ua)
 		}
@@ -107,57 +129,48 @@ func request(ctx context.Context, method, path string, o callOpts) (*http.Respon
 		for _, c := range o.cookies {
 			req.AddCookie(c)
 		}
-
 		resp, err := httpClient.Do(req)
-		if err != nil {
-			var netErr net.Error
-			if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
-				return nil, newErr("timeout", 0, fmt.Sprintf("request timed out after %s", requestTimeout))
-			}
-			lastErr = newErr("network", 0, fmt.Sprintf("network request failed: %v", err))
-			continue
-		}
-		if resp.StatusCode >= 500 && attempt < maxRetries {
+		var b []byte
+		if err == nil {
+			b, err = io.ReadAll(resp.Body)
 			resp.Body.Close()
-			lastErr = newErr("network", resp.StatusCode, fmt.Sprintf("server error (%d)", resp.StatusCode))
-			continue
+			if err == nil && resp.StatusCode < 500 {
+				return resp.StatusCode, b, nil
+			}
 		}
-		return resp, nil
+		if ctx.Err() != nil || attempt == maxRetries || time.Until(deadline) <= retryDelay {
+			if err != nil {
+				return fail(err)
+			}
+			return resp.StatusCode, b, nil
+		}
+		select {
+		case <-ctx.Done():
+			return fail(ctx.Err())
+		case <-time.After(retryDelay):
+		}
 	}
-
-	if lastErr != nil {
-		return nil, lastErr
-	}
-	return nil, newErr("network", 0, "request failed after retries")
 }
 
-func handleResponse(resp *http.Response, out any) error {
-	defer resp.Body.Close()
-
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return newErr("network", resp.StatusCode, "failed to read response body")
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+func handleResponse(status int, b []byte, out any) error {
+	if status < 200 || status >= 300 {
 		txt := string(b)
 		if txt == "" {
 			txt = "unknown error"
 		}
-		switch resp.StatusCode {
+		switch status {
 		case 401:
 			return newErr("auth", 401, txt)
 		case 403:
 			return newErr("forbidden", 403, txt)
 		}
-		return newErr("network", resp.StatusCode, fmt.Sprintf("api error (%d): %s", resp.StatusCode, txt))
+		return newErr("network", status, fmt.Sprintf("api error (%d): %s", status, txt))
 	}
-
 	if out == nil {
 		return nil
 	}
 	if err := json.Unmarshal(b, out); err != nil {
-		return newErr("network", resp.StatusCode, "invalid JSON response from server")
+		return newErr("network", status, "invalid JSON response from server")
 	}
 	return nil
 }
@@ -174,9 +187,6 @@ func clientIP(r *http.Request) string {
 }
 
 func sessionToken(r *http.Request) string {
-	if t := r.URL.Query().Get(tokenParam); t != "" {
-		return t
-	}
 	if c, err := r.Cookie(sessionCookie); err == nil {
 		return c.Value
 	}
@@ -196,24 +206,27 @@ func SendMagicLink(email string, appID ...string) (*MagicLinkResponse, error) {
 		body["app_id"] = appID[0]
 	}
 
-	resp, err := request(context.Background(), http.MethodPost, "/api/public/auth/magic-link/send", callOpts{body: body})
+	st, b, err := request(context.Background(), http.MethodPost, "/api/public/auth/magic-link/send", callOpts{body: body})
 	if err != nil {
 		return nil, err
 	}
 
 	out := &MagicLinkResponse{}
-	if err := handleResponse(resp, out); err != nil {
+	if err := handleResponse(st, b, out); err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
 func ValidateSession(appID string, r *http.Request) (*Session, error) {
+	return validateToken(appID, sessionToken(r), r)
+}
+
+func validateToken(appID, tok string, r *http.Request) (*Session, error) {
 	if err := validateUUID(appID, "App ID"); err != nil {
 		return nil, err
 	}
 
-	tok := sessionToken(r)
 	if !uuidRegex.MatchString(tok) {
 		return &Session{SignInURL: baseURL() + "/sign-in/magic-link?app_id=" + appID}, nil
 	}
@@ -225,13 +238,13 @@ func ValidateSession(appID string, r *http.Request) (*Session, error) {
 		cookies: []*http.Cookie{{Name: sessionCookie, Value: tok}},
 	}
 
-	resp, err := request(r.Context(), http.MethodGet, "/api/public/auth/session/validate", o)
+	st, b, err := request(r.Context(), http.MethodGet, "/api/public/auth/session/validate", o)
 	if err != nil {
 		return nil, err
 	}
 
 	out := &Session{}
-	if err := handleResponse(resp, out); err != nil {
+	if err := handleResponse(st, b, out); err != nil {
 		return nil, err
 	}
 	return out, nil
