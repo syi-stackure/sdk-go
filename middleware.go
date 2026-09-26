@@ -1,10 +1,13 @@
 package stackure
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -58,24 +61,33 @@ func hasAnyPerm(have, want []string) bool {
 }
 
 func handoffToken(r *http.Request) string {
-	if tok := r.URL.Query().Get(tokenParam); tok != "" {
-		return tok
-	}
 	if r.Method != http.MethodPost {
 		return ""
 	}
-	if _, err := r.Cookie(sessionCookie); err == nil {
+	if r.Header.Get("Origin") != origin() {
 		return ""
 	}
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-www-form-urlencoded") {
 		return ""
 	}
-	return r.PostFormValue(tokenParam)
+	b, _ := io.ReadAll(io.LimitReader(r.Body, maxHandoffBody+1))
+	r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(b), r.Body))
+	if len(b) > maxHandoffBody {
+		return ""
+	}
+	v, err := url.ParseQuery(string(b))
+	if err != nil {
+		return ""
+	}
+	return v.Get(tokenParam)
 }
 
-func adoptToken(w http.ResponseWriter, r *http.Request) bool {
+func adoptToken(appID string, w http.ResponseWriter, r *http.Request) bool {
 	tok := handoffToken(r)
 	if tok == "" {
+		return false
+	}
+	if s, err := validateToken(appID, tok, r); err != nil || !s.Authenticated {
 		return false
 	}
 
@@ -83,23 +95,27 @@ func adoptToken(w http.ResponseWriter, r *http.Request) bool {
 		Name:     sessionCookie,
 		Value:    tok,
 		Path:     "/",
+		MaxAge:   604800,
 		HttpOnly: true,
 		Secure:   isHTTPS(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 
-	q := r.URL.Query()
-	q.Del(tokenParam)
-	clean := *r.URL
-	clean.RawQuery = q.Encode()
-	http.Redirect(w, r, clean.RequestURI(), http.StatusSeeOther)
+	http.Redirect(w, r, safePath(r.URL.RequestURI()), http.StatusSeeOther)
 	return true
+}
+
+func safePath(p string) string {
+	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.HasPrefix(p, "/\\") {
+		return "/"
+	}
+	return p
 }
 
 func Auth(appID string, perms ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if adoptToken(w, r) {
+			if adoptToken(appID, w, r) {
 				return
 			}
 
