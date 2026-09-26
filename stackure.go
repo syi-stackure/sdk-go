@@ -51,6 +51,7 @@ func appSecret() (string, error) {
 
 type User struct {
 	UserID          string   `json:"user_id"`
+	AccountID       string   `json:"account_id"`
 	UserEmail       string   `json:"user_email"`
 	UserFirstName   string   `json:"user_first_name"`
 	UserLastName    string   `json:"user_last_name"`
