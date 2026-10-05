@@ -25,7 +25,10 @@ const (
 	retryDelay     = 500 * time.Millisecond
 )
 
-var httpClient = &http.Client{Timeout: requestTimeout}
+var httpClient = &http.Client{
+	Timeout:       requestTimeout,
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+}
 
 func origin() string {
 	u, err := url.Parse(baseURL())
@@ -85,12 +88,17 @@ type callOpts struct {
 	query   url.Values
 	cookies []*http.Cookie
 	ua, ip  string
+	bearer  string
+	noBody  bool
 }
 
 func request(ctx context.Context, method, path string, o callOpts) (int, []byte, error) {
-	secret, err := appSecret()
-	if err != nil {
-		return 0, nil, err
+	var secret string
+	var err error
+	if o.bearer == "" {
+		if secret, err = appSecret(); err != nil {
+			return 0, nil, err
+		}
 	}
 	fullURL := baseURL() + path
 	if len(o.query) > 0 {
@@ -120,7 +128,11 @@ func request(ctx context.Context, method, path string, o callOpts) (int, []byte,
 		if o.body != nil {
 			req.Header.Set("Content-Type", "application/json")
 		}
-		req.Header.Set("X-App-Secret", secret)
+		if o.bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+o.bearer)
+		} else {
+			req.Header.Set("X-App-Secret", secret)
+		}
 		if o.ua != "" {
 			req.Header.Set("User-Agent", o.ua)
 		}
@@ -133,7 +145,9 @@ func request(ctx context.Context, method, path string, o callOpts) (int, []byte,
 		resp, err := httpClient.Do(req)
 		var b []byte
 		if err == nil {
-			b, err = io.ReadAll(resp.Body)
+			if !o.noBody {
+				b, err = io.ReadAll(resp.Body)
+			}
 			resp.Body.Close()
 			if err == nil && resp.StatusCode < 500 {
 				return resp.StatusCode, b, nil

@@ -153,7 +153,31 @@ func Auth(appID string, perms ...string) func(http.Handler) http.Handler {
 	}
 }
 
+func sameOriginPost(r *http.Request) bool {
+	h := r.Header
+	site := h.Values("Sec-Fetch-Site")
+	if r.Method != http.MethodPost || len(site) > 1 || len(h.Values("Origin")) > 1 || len(h.Values("Host")) > 1 {
+		return false
+	}
+	if len(site) == 1 {
+		return site[0] == "same-origin"
+	}
+	u, err := url.Parse(h.Get("Origin"))
+	return err == nil && u.Host != "" && strings.EqualFold(u.Host, r.Host) && (u.Scheme == "https" || !isHTTPS(r))
+}
+
 func Logout(w http.ResponseWriter, r *http.Request) {
+	if !sameOriginPost(r) {
+		http.Redirect(w, r, baseURL()+"/signout", http.StatusSeeOther)
+		return
+	}
+	dest := baseURL() + "/"
+	if tok := sessionToken(r); uuidRegex.MatchString(tok) {
+		st, _, err := request(context.WithoutCancel(r.Context()), http.MethodPost, "/api/public/auth/sign-out", callOpts{bearer: tok, noBody: true, ua: r.UserAgent(), ip: clientIP(r)})
+		if err != nil || st/100 != 2 {
+			dest = baseURL() + "/signout"
+		}
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    "",
@@ -163,5 +187,5 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 		Secure:   isHTTPS(r),
 		SameSite: http.SameSiteLaxMode,
 	})
-	http.Redirect(w, r, baseURL()+"/signout", http.StatusSeeOther)
+	http.Redirect(w, r, dest, http.StatusSeeOther)
 }
