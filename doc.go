@@ -1,7 +1,7 @@
 // Package stackure is the Go SDK for the Stackure authentication API.
 //
 // Stackure provides passwordless B2B authentication. This SDK wraps the
-// public API behind five free functions and the Auth middleware.
+// public API behind five free functions and the Auth and MCP middleware.
 //
 // # Quickstart
 //
@@ -73,6 +73,27 @@
 // The Auth middleware inspects the Accept header. Browser requests (Accept:
 // text/html) redirect to the sign-in URL on 401. API requests (Accept:
 // application/json) receive a JSON error body.
+//
+// # MCP
+//
+// Protect an MCP route:
+//
+//	http.Handle("/mcp", stackure.MCP(appID)(mcpHandler))
+//
+// AI clients such as Claude, Claude Code, VS Code and Cursor sign users in
+// through Stackure and send the credential it issues as a bearer token. This
+// one line checks every MCP request against Stackure in real time with the same
+// app secret. There is no extra setup.
+//
+// The MCP endpoint must be served from the same site as the app's registered
+// URL unless an MCP URL is set for the app in Stackure. The SDK tells Stackure
+// which endpoint was reached from the request's scheme, Host header and path.
+//
+// The user is attached to the request context as with Auth, and permissions
+// are passed the same way. A request that is not signed in gets a 401 whose
+// WWW-Authenticate header tells the AI client where to sign in, a missing
+// permission gets a 403, and a check that cannot be completed gets a 503. The
+// MCP middleware never redirects and never reads or sets a cookie.
 //
 // # Configuration
 //

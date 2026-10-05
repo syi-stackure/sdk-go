@@ -62,6 +62,18 @@ Every request with a session token is validated against Stackure, so revocation
 is immediate. Requests without a well-formed token get the sign-in URL without a
 Stackure call.
 
+## MCP
+
+```go
+http.Handle("/mcp", stackure.MCP(appID)(mcpHandler)) // mcpHandler is your MCP server's http.Handler
+```
+
+AI clients such as Claude, Claude Code, VS Code and Cursor sign users in through Stackure. This one line checks every MCP request against Stackure in real time with the same app secret. There is no extra setup.
+
+The MCP endpoint must be served from the same site as the app's registered URL unless an MCP URL is set for the app in Stackure.
+
+The user and permissions work as with `Auth`. A request that is not signed in gets a `401` that tells the AI client where to sign in, a missing permission gets a `403`, and a check that cannot be completed gets a `503`.
+
 ## Verify manually
 
 ```go
