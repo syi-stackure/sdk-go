@@ -9,7 +9,7 @@ import "fmt"
 //	var se *stackure.StackureError
 //	if errors.As(err, &se) {
 //	    switch se.Code {
-//	    case "validation": // bad input or STACKURE_APP_SECRET not set
+//	    case "validation": // bad input or STACKURE_APP_ID/STACKURE_APP_SECRET not set
 //	    case "auth":       // 401 from the API
 //	    case "forbidden":  // 403 from the API
 //	    case "timeout":    // request exceeded timeout

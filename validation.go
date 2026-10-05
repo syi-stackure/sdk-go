@@ -18,15 +18,3 @@ func validateEmail(email string) error {
 	}
 	return nil
 }
-
-// validateUUID returns a "validation"-coded StackureError when value is not
-// a valid UUID v4.
-func validateUUID(value string, fieldName string) error {
-	if value == "" {
-		return newErr("validation", 0, fieldName+" is required")
-	}
-	if !uuidRegex.MatchString(value) {
-		return newErr("validation", 0, "invalid "+fieldName+" format (must be a valid UUID)")
-	}
-	return nil
-}

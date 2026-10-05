@@ -52,6 +52,17 @@ func appSecret() (string, error) {
 	return "", newErr("validation", 0, "STACKURE_APP_SECRET is not set")
 }
 
+func appID() (string, error) {
+	v := os.Getenv("STACKURE_APP_ID")
+	if v == "" {
+		return "", newErr("validation", 0, "STACKURE_APP_ID is not set")
+	}
+	if !uuidRegex.MatchString(v) {
+		return "", newErr("validation", 0, "invalid STACKURE_APP_ID format (must be a valid UUID)")
+	}
+	return v, nil
+}
+
 type User struct {
 	UserID          string   `json:"user_id"`
 	AccountID       string   `json:"account_id"`
@@ -225,20 +236,16 @@ func bearerToken(r *http.Request) string {
 	return ""
 }
 
-func SendMagicLink(email string, appID ...string) (*MagicLinkResponse, error) {
+func SendMagicLink(email string) (*MagicLinkResponse, error) {
 	if err := validateEmail(email); err != nil {
 		return nil, err
 	}
-
-	body := map[string]string{"user_email": email}
-	if len(appID) > 0 && appID[0] != "" {
-		if err := validateUUID(appID[0], "App ID"); err != nil {
-			return nil, err
-		}
-		body["app_id"] = appID[0]
+	id, err := appID()
+	if err != nil {
+		return nil, err
 	}
 
-	st, b, err := request(context.Background(), http.MethodPost, "/api/public/auth/magic-link/send", callOpts{body: body})
+	st, b, err := request(context.Background(), http.MethodPost, "/api/public/auth/magic-link/send", callOpts{body: map[string]string{"user_email": email, "app_id": id}})
 	if err != nil {
 		return nil, err
 	}
@@ -250,21 +257,22 @@ func SendMagicLink(email string, appID ...string) (*MagicLinkResponse, error) {
 	return out, nil
 }
 
-func ValidateSession(appID string, r *http.Request) (*Session, error) {
-	return validateToken(appID, sessionToken(r), r)
+func ValidateSession(r *http.Request) (*Session, error) {
+	return validateToken(sessionToken(r), r)
 }
 
-func validateToken(appID, tok string, r *http.Request) (*Session, error) {
-	if err := validateUUID(appID, "App ID"); err != nil {
+func validateToken(tok string, r *http.Request) (*Session, error) {
+	id, err := appID()
+	if err != nil {
 		return nil, err
 	}
 
 	if !uuidRegex.MatchString(tok) {
-		return &Session{SignInURL: baseURL() + "/sign-in/magic-link?app_id=" + appID}, nil
+		return &Session{SignInURL: baseURL() + "/sign-in/magic-link?app_id=" + id}, nil
 	}
 
 	o := callOpts{
-		query:   url.Values{"app_id": {appID}},
+		query:   url.Values{"app_id": {id}},
 		ua:      r.UserAgent(),
 		ip:      clientIP(r),
 		cookies: []*http.Cookie{{Name: sessionCookie, Value: tok}},
@@ -282,8 +290,9 @@ func validateToken(appID, tok string, r *http.Request) (*Session, error) {
 	return out, nil
 }
 
-func validateMCP(appID string, r *http.Request) (*mcpSession, error) {
-	if err := validateUUID(appID, "App ID"); err != nil {
+func validateMCP(r *http.Request) (*mcpSession, error) {
+	id, err := appID()
+	if err != nil {
 		return nil, err
 	}
 
@@ -298,7 +307,7 @@ func validateMCP(appID string, r *http.Request) (*mcpSession, error) {
 	}
 
 	o := callOpts{
-		query: url.Values{"app_id": {appID}, "mcp": {scheme + "://" + r.Host + path}},
+		query: url.Values{"app_id": {id}, "mcp": {scheme + "://" + r.Host + path}},
 		ua:    r.UserAgent(),
 		ip:    clientIP(r),
 		token: bearerToken(r),

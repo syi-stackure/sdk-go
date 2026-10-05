@@ -7,9 +7,7 @@
 //
 // Protect an HTTP route:
 //
-//	http.Handle("/admin", stackure.Auth(appID, "can_approve_invoice")(handler))
-//
-// appID is the app's UUID as registered in Stackure.
+//	http.Handle("/admin", stackure.Auth("can_approve_invoice")(handler))
 //
 // Access the authenticated user inside the handler:
 //
@@ -17,14 +15,14 @@
 //
 // Manual verification without middleware:
 //
-//	result := stackure.Verify(appID, r)
+//	result := stackure.Verify(r)
 //	if result.Authenticated {
 //	    // use result.User
 //	}
 //
 // Send a magic-link email:
 //
-//	_, err := stackure.SendMagicLink("user@example.com", appID)
+//	_, err := stackure.SendMagicLink("user@example.com")
 //
 // Log the user out:
 //
@@ -78,12 +76,12 @@
 //
 // Protect an MCP route:
 //
-//	http.Handle("/mcp", stackure.MCP(appID)(mcpHandler))
+//	http.Handle("/mcp", stackure.MCP()(mcpHandler))
 //
 // AI clients such as Claude, Claude Code, VS Code and Cursor sign users in
 // through Stackure and send the credential it issues as a bearer token. This
 // one line checks every MCP request against Stackure in real time with the same
-// app secret. There is no extra setup.
+// app ID and secret. There is no extra setup.
 //
 // The MCP endpoint must be served from the same site as the app's registered
 // URL unless an MCP URL is set for the app in Stackure. The SDK tells Stackure
@@ -96,6 +94,10 @@
 // MCP middleware never redirects and never reads or sets a cookie.
 //
 // # Configuration
+//
+// STACKURE_APP_ID must be set to the app's UUID shown on the app page in
+// Stackure. Every call except Logout reads it on each request and fails with a
+// "validation" error when it is unset or not a valid UUID.
 //
 // STACKURE_APP_SECRET must be set to the app secret shown when the app was
 // registered (or last rotated) in Stackure. It is sent as the X-App-Secret

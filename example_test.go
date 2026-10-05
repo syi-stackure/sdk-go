@@ -8,15 +8,13 @@ import (
 	stackure "stackure.com/sdk-go"
 )
 
-const appID = "7f3c1a2e-9b4d-4e6f-8a1b-2c3d4e5f6071"
-
 func ExampleAuth() {
 	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user := stackure.UserFromContext(r.Context())
 		fmt.Fprintf(w, "hello %s", user.UserEmail)
 	})
 
-	http.Handle("/admin", stackure.Auth(appID, "can_approve_invoice")(protected))
+	http.Handle("/admin", stackure.Auth("can_approve_invoice")(protected))
 }
 
 func ExampleMCP() {
@@ -25,12 +23,12 @@ func ExampleMCP() {
 		fmt.Fprintf(w, "hello %s", user.UserEmail)
 	})
 
-	http.Handle("/mcp", stackure.MCP(appID, "can_approve_invoice")(server))
+	http.Handle("/mcp", stackure.MCP("can_approve_invoice")(server))
 }
 
 func ExampleVerify() {
 	http.HandleFunc("/report", func(w http.ResponseWriter, r *http.Request) {
-		result := stackure.Verify(appID, r, "can_approve_invoice")
+		result := stackure.Verify(r, "can_approve_invoice")
 		if !result.Authenticated {
 			http.Error(w, result.Error.Message, result.Error.Code)
 			return
@@ -51,7 +49,7 @@ func ExampleUserFromContext() {
 }
 
 func ExampleSendMagicLink() {
-	resp, err := stackure.SendMagicLink("user@example.com", appID)
+	resp, err := stackure.SendMagicLink("user@example.com")
 	if err != nil {
 		return
 	}

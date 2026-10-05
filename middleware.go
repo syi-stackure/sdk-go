@@ -24,8 +24,8 @@ func isHTTPS(r *http.Request) bool {
 	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
 
-func Verify(appID string, r *http.Request, perms ...string) *VerifyResult {
-	session, err := ValidateSession(appID, r)
+func Verify(r *http.Request, perms ...string) *VerifyResult {
+	session, err := ValidateSession(r)
 	if err != nil {
 		log.Printf("stackure: verification error: %v", err)
 		return &VerifyResult{Error: &VerifyError{Code: 500, Message: "Authentication verification failed"}}
@@ -82,12 +82,12 @@ func handoffToken(r *http.Request) string {
 	return v.Get(tokenParam)
 }
 
-func adoptToken(appID string, w http.ResponseWriter, r *http.Request) bool {
+func adoptToken(w http.ResponseWriter, r *http.Request) bool {
 	tok := handoffToken(r)
 	if tok == "" {
 		return false
 	}
-	if s, err := validateToken(appID, tok, r); err != nil || !s.Authenticated {
+	if s, err := validateToken(tok, r); err != nil || !s.Authenticated {
 		return false
 	}
 
@@ -112,14 +112,14 @@ func safePath(p string) string {
 	return p
 }
 
-func Auth(appID string, perms ...string) func(http.Handler) http.Handler {
+func Auth(perms ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if adoptToken(appID, w, r) {
+			if adoptToken(w, r) {
 				return
 			}
 
-			result := Verify(appID, r, perms...)
+			result := Verify(r, perms...)
 
 			if !result.Authenticated && result.Error != nil {
 				if result.Error.Code == 401 {
@@ -159,10 +159,10 @@ func mcpDeny(w http.ResponseWriter, code int, msg string) {
 	_, _ = io.WriteString(w, `{"error":"`+msg+`"}`)
 }
 
-func MCP(appID string, perms ...string) func(http.Handler) http.Handler {
+func MCP(perms ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			session, err := validateMCP(appID, r)
+			session, err := validateMCP(r)
 			if err != nil {
 				log.Printf("stackure: verification error: %v", err)
 				mcpDeny(w, http.StatusServiceUnavailable, "unavailable")
