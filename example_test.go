@@ -49,10 +49,11 @@ func ExampleSendMagicLink() {
 	fmt.Println(resp.Message)
 }
 
+// Mount Logout for every method and trigger it with a form or button that
+// POSTs from the app's own page. A link or any other request is sent to
+// Stackure's sign-out page, where the user confirms.
 func ExampleLogout() {
-	http.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {
-		stackure.Logout(w, r)
-	})
+	http.HandleFunc("/logout", stackure.Logout)
 }
 
 func ExampleStackureError() {

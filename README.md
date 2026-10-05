@@ -25,9 +25,9 @@ Set the app secret from the Stackure app page (shown once at registration and on
 export STACKURE_APP_SECRET=...
 ```
 
-It is sent as `X-App-Secret` on every call. The first call that actually reaches Stackure fails with a `validation` error if it is unset. `STACKURE_BASE_URL` optionally overrides the API host (default `https://stackure.com`).
+It is sent as `X-App-Secret` on every call except `Logout`'s sign-out call, which carries only the session token. The first call that actually reaches Stackure fails with a `validation` error if it is unset. `STACKURE_BASE_URL` optionally overrides the API host (default `https://stackure.com`).
 
-Every call has one 2-second deadline. The SDK retries once after 500 ms on a 5xx response or a connection failure (refused, reset, DNS, TLS), only if more than 500 ms of the deadline remain; timeouts are never retried and surface as a `timeout` error.
+Every call has one 2-second deadline. The SDK retries once after 500 ms on a 5xx response or a connection failure (refused, reset, DNS, TLS), only if more than 500 ms of the deadline remain; timeouts are never retried and surface as a `timeout` error. Redirects are not followed; a 3xx response surfaces as a `network` error.
 
 ## Protect a route
 
@@ -84,10 +84,16 @@ resp, err := stackure.SendMagicLink("user@example.com", appID)
 ## Log out
 
 ```go
-stackure.Logout(w, r)
+http.HandleFunc("/logout", stackure.Logout)
 ```
 
-Clears the app's cookie and redirects to Stackure's sign-out.
+```html
+<form method="post" action="/logout"><button>Sign out</button></form>
+```
+
+Mount `Logout` on the path alone, with no method in the pattern (`"/logout"`, not `"POST /logout"`), so every request to it reaches the SDK. Trigger it with a form or button that POSTs from the app's own page; a link or any other request is sent to Stackure's sign-out page, where the user confirms.
+
+That POST signs the user out of Stackure everywhere with a server-side call, clears the app's cookie and redirects to Stackure. If the call fails, the redirect goes to Stackure's sign-out page, where the user can finish signing out.
 
 ## Errors
 

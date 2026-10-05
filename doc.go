@@ -28,7 +28,17 @@
 //
 // Log the user out:
 //
-//	stackure.Logout(w, r)
+//	http.HandleFunc("/logout", stackure.Logout)
+//
+// Mount Logout on the path alone, with no method in the pattern, so every
+// request to it reaches the SDK. Trigger it with a form or button that POSTs
+// from the app's own page; a link or any other request is sent to Stackure's
+// sign-out page, where the user confirms.
+//
+// That POST signs the user out of Stackure everywhere with a server-side call,
+// clears the app's cookie and redirects to Stackure. If the call fails, the
+// redirect goes to Stackure's sign-out page, where the user can finish signing
+// out.
 //
 // # Sign-in handoff
 //
@@ -68,15 +78,17 @@
 //
 // STACKURE_APP_SECRET must be set to the app secret shown when the app was
 // registered (or last rotated) in Stackure. It is sent as the X-App-Secret
-// header on every call; the first call that actually reaches Stackure fails
-// with a "validation" error when it is unset. STACKURE_BASE_URL overrides the
-// API host (default https://stackure.com).
+// header on every call except Logout's sign-out call, which carries only the
+// session token; the first call that actually reaches Stackure fails with a
+// "validation" error when it is unset. STACKURE_BASE_URL overrides the API host
+// (default https://stackure.com).
 //
 // Every SDK call has one 2-second deadline covering connect, headers, body and
 // the single retry. The SDK retries once after 500 ms on a 5xx response or a
 // connection failure (refused, reset, DNS, TLS), and only if more than 500 ms
 // of the deadline remain. Timeouts are never retried and surface as a
-// "timeout" error, even when they happen while reading the body.
+// "timeout" error, even when they happen while reading the body. Redirects are
+// not followed; a 3xx response surfaces as a "network" error.
 //
 // # Errors
 //
