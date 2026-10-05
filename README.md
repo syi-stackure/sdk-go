@@ -19,13 +19,16 @@ go get stackure.com/sdk-go
 
 ## Configure
 
-Set the app secret from the Stackure app page (shown once at registration and on each rotation):
+Set the app ID and app secret from the Stackure app page (the secret is shown once at registration and on each rotation):
 
 ```bash
+export STACKURE_APP_ID=...
 export STACKURE_APP_SECRET=...
 ```
 
-It is sent as `X-App-Secret` on every call except `Logout`'s sign-out call, which carries only the session token. The first call that actually reaches Stackure fails with a `validation` error if it is unset. `STACKURE_BASE_URL` optionally overrides the API host (default `https://stackure.com`).
+`STACKURE_APP_ID` is the app's UUID. Every call except `Logout` reads it on each request and fails with a `validation` error if it is unset or not a valid UUID.
+
+The secret is sent as `X-App-Secret` on every call except `Logout`'s sign-out call, which carries only the session token. The first call that actually reaches Stackure fails with a `validation` error if it is unset. `STACKURE_BASE_URL` optionally overrides the API host (default `https://stackure.com`).
 
 Every call has one 2-second deadline. The SDK retries once after 500 ms on a 5xx response or a connection failure (refused, reset, DNS, TLS), only if more than 500 ms of the deadline remain; timeouts are never retried and surface as a `timeout` error. Redirects are not followed; a 3xx response surfaces as a `network` error.
 
@@ -34,9 +37,7 @@ Every call has one 2-second deadline. The SDK retries once after 500 ms on a 5xx
 ```go
 import "stackure.com/sdk-go"
 
-const appID = "7f3c1a2e-9b4d-4e6f-8a1b-2c3d4e5f6071" // your app's UUID in Stackure
-
-http.Handle("/admin", stackure.Auth(appID, "can_approve_invoice")(handler))
+http.Handle("/admin", stackure.Auth("can_approve_invoice")(handler))
 ```
 
 Access the authenticated user in your handler:
@@ -65,10 +66,10 @@ Stackure call.
 ## MCP
 
 ```go
-http.Handle("/mcp", stackure.MCP(appID)(mcpHandler)) // mcpHandler is your MCP server's http.Handler
+http.Handle("/mcp", stackure.MCP()(mcpHandler)) // mcpHandler is your MCP server's http.Handler
 ```
 
-AI clients such as Claude, Claude Code, VS Code and Cursor sign users in through Stackure. This one line checks every MCP request against Stackure in real time with the same app secret. There is no extra setup.
+AI clients such as Claude, Claude Code, VS Code and Cursor sign users in through Stackure. This one line checks every MCP request against Stackure in real time with the same app ID and secret. There is no extra setup.
 
 The MCP endpoint must be served from the same site as the app's registered URL unless an MCP URL is set for the app in Stackure.
 
@@ -77,7 +78,7 @@ The user and permissions work as with `Auth`. A request that is not signed in ge
 ## Verify manually
 
 ```go
-result := stackure.Verify(appID, r)
+result := stackure.Verify(r)
 
 if !result.Authenticated {
     // result.Error.Code, result.Error.Message, result.Error.SignInURL
@@ -89,7 +90,7 @@ if !result.Authenticated {
 ## Send a magic link
 
 ```go
-resp, err := stackure.SendMagicLink("user@example.com", appID)
+resp, err := stackure.SendMagicLink("user@example.com")
 // resp.Message
 ```
 

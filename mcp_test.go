@@ -2,6 +2,7 @@ package stackure_test
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -154,6 +155,7 @@ func TestMCP(t *testing.T) {
 				srv.Close()
 			}
 			t.Setenv("STACKURE_BASE_URL", srv.URL)
+			t.Setenv("STACKURE_APP_ID", tc.appID)
 			if tc.noSecret {
 				t.Setenv("STACKURE_APP_SECRET", "")
 			} else {
@@ -184,7 +186,7 @@ func TestMCP(t *testing.T) {
 			var user *stackure.User
 			var received string
 			w := httptest.NewRecorder()
-			stackure.MCP(tc.appID, tc.perms...)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			stackure.MCP(tc.perms...)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				reached = true
 				user = stackure.UserFromContext(r.Context())
 				b, _ := io.ReadAll(r.Body)
@@ -266,14 +268,15 @@ func TestMCPMounted(t *testing.T) {
 	}))
 	defer api.Close()
 	t.Setenv("STACKURE_BASE_URL", api.URL)
+	t.Setenv("STACKURE_APP_ID", appID)
 	t.Setenv("STACKURE_APP_SECRET", appSecret)
 	echo := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		io.WriteString(w, stackure.UserFromContext(r.Context()).UserEmail+" "+string(b))
 	})
 	mux := http.NewServeMux()
-	mux.Handle("/api/mcp", stackure.MCP(appID)(echo))
-	mux.Handle("/admin/mcp", stackure.MCP(appID, "can_admin")(echo))
+	mux.Handle("/api/mcp", stackure.MCP()(echo))
+	mux.Handle("/admin/mcp", stackure.MCP("can_admin")(echo))
 	app := httptest.NewServer(mux)
 	defer app.Close()
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -335,9 +338,10 @@ func TestMCPStripPrefix(t *testing.T) {
 	}))
 	defer api.Close()
 	t.Setenv("STACKURE_BASE_URL", api.URL)
+	t.Setenv("STACKURE_APP_ID", appID)
 	t.Setenv("STACKURE_APP_SECRET", appSecret)
 	mux := http.NewServeMux()
-	mux.Handle("/nested/", http.StripPrefix("/nested", stackure.MCP(appID)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))))
+	mux.Handle("/nested/", http.StripPrefix("/nested", stackure.MCP()(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))))
 	app := httptest.NewServer(mux)
 	defer app.Close()
 	req, _ := http.NewRequest(http.MethodPost, app.URL+"/nested/mcp?x=1", nil)
@@ -349,5 +353,24 @@ func TestMCPStripPrefix(t *testing.T) {
 	res.Body.Close()
 	if got, want := mcp.Load(), app.URL+"/nested/mcp"; got != want {
 		t.Fatalf("mcp = %v, want %v", got, want)
+	}
+}
+
+func TestVerifyNoAppID(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("Stackure called") }))
+	defer api.Close()
+	t.Setenv("STACKURE_BASE_URL", api.URL)
+	t.Setenv("STACKURE_APP_ID", "")
+	t.Setenv("STACKURE_APP_SECRET", appSecret)
+	log.SetOutput(io.Discard)
+	defer log.SetOutput(os.Stderr)
+	r := httptest.NewRequest(http.MethodGet, appOrigin+"/", nil)
+	r.AddCookie(&http.Cookie{Name: "session", Value: sessionToken})
+	var se *stackure.StackureError
+	if _, err := stackure.ValidateSession(r); !errors.As(err, &se) || se.Code != "validation" || se.Message != "STACKURE_APP_ID is not set" {
+		t.Errorf("err = %v", err)
+	}
+	if res := stackure.Verify(r); res.Authenticated || res.Error == nil || res.Error.Code != 500 {
+		t.Errorf("result = %+v", res)
 	}
 }

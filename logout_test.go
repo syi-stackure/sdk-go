@@ -19,6 +19,7 @@ import (
 
 const (
 	sessionToken = "0b9d2c4e-5f6a-4b7c-8d9e-0a1b2c3d4e5f"
+	appID        = "7f3c1a2e-9b4d-4e6f-8a1b-2c3d4e5f6071"
 	appSecret    = "app-secret-value"
 	appHost      = "app.test:8080"
 	appOrigin    = "http://" + appHost
