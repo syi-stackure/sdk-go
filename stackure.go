@@ -83,12 +83,18 @@ type Session struct {
 	SignInURL     string `json:"sign_in_url,omitempty"`
 }
 
+type mcpSession struct {
+	Session
+	WWWAuthenticate string `json:"www_authenticate"`
+}
+
 type callOpts struct {
 	body    any
 	query   url.Values
 	cookies []*http.Cookie
 	ua, ip  string
 	bearer  string
+	token   string
 	noBody  bool
 }
 
@@ -132,6 +138,9 @@ func request(ctx context.Context, method, path string, o callOpts) (int, []byte,
 			req.Header.Set("Authorization", "Bearer "+o.bearer)
 		} else {
 			req.Header.Set("X-App-Secret", secret)
+		}
+		if o.token != "" {
+			req.Header.Set("Authorization", "Bearer "+o.token)
 		}
 		if o.ua != "" {
 			req.Header.Set("User-Agent", o.ua)
@@ -208,6 +217,14 @@ func sessionToken(r *http.Request) string {
 	return ""
 }
 
+func bearerToken(r *http.Request) string {
+	scheme, tok, _ := strings.Cut(r.Header.Get("Authorization"), " ")
+	if tok = strings.TrimSpace(tok); strings.EqualFold(scheme, "Bearer") && uuidRegex.MatchString(tok) {
+		return tok
+	}
+	return ""
+}
+
 func SendMagicLink(email string, appID ...string) (*MagicLinkResponse, error) {
 	if err := validateEmail(email); err != nil {
 		return nil, err
@@ -259,6 +276,40 @@ func validateToken(appID, tok string, r *http.Request) (*Session, error) {
 	}
 
 	out := &Session{}
+	if err := handleResponse(st, b, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func validateMCP(appID string, r *http.Request) (*mcpSession, error) {
+	if err := validateUUID(appID, "App ID"); err != nil {
+		return nil, err
+	}
+
+	scheme := "http"
+	if isHTTPS(r) {
+		scheme = "https"
+	}
+
+	path := r.URL.EscapedPath()
+	if u, err := url.ParseRequestURI(r.RequestURI); err == nil && strings.HasPrefix(r.RequestURI, "/") {
+		path = u.EscapedPath()
+	}
+
+	o := callOpts{
+		query: url.Values{"app_id": {appID}, "mcp": {scheme + "://" + r.Host + path}},
+		ua:    r.UserAgent(),
+		ip:    clientIP(r),
+		token: bearerToken(r),
+	}
+
+	st, b, err := request(r.Context(), http.MethodGet, "/api/public/auth/session/validate", o)
+	if err != nil {
+		return nil, err
+	}
+
+	out := &mcpSession{}
 	if err := handleResponse(st, b, out); err != nil {
 		return nil, err
 	}

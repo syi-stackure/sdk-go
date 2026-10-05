@@ -153,6 +153,42 @@ func Auth(appID string, perms ...string) func(http.Handler) http.Handler {
 	}
 }
 
+func mcpDeny(w http.ResponseWriter, code int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_, _ = io.WriteString(w, `{"error":"`+msg+`"}`)
+}
+
+func MCP(appID string, perms ...string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			session, err := validateMCP(appID, r)
+			if err != nil {
+				log.Printf("stackure: verification error: %v", err)
+				mcpDeny(w, http.StatusServiceUnavailable, "unavailable")
+				return
+			}
+
+			if !session.Authenticated || session.User == nil {
+				challenge := session.WWWAuthenticate
+				if challenge == "" {
+					challenge = "Bearer"
+				}
+				w.Header().Set("WWW-Authenticate", challenge)
+				mcpDeny(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+
+			if len(perms) > 0 && !hasAnyPerm(session.User.UserPermissions, perms) {
+				mcpDeny(w, http.StatusForbidden, "forbidden")
+				return
+			}
+
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userContextKey, session.User)))
+		})
+	}
+}
+
 func sameOriginPost(r *http.Request) bool {
 	h := r.Header
 	site := h.Values("Sec-Fetch-Site")
