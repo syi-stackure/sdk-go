@@ -75,6 +75,25 @@ The MCP endpoint must be served from the same site as the app's registered URL u
 
 The user is attached as with `Auth`. A request that is not signed in gets a `401` that tells the AI client where to sign in, and a check that cannot be completed gets a `503`.
 
+## Identity facts
+
+Every authenticated `User`, from `Auth` or `MCP`, also carries:
+
+- `UserIsAppAdmin`: the user is an app admin or owner in their Stackure org, in charge of its apps
+- `UserTeams`: the Stackure teams they belong to (`[]Team{TeamID, TeamName}`), empty when none
+
+List the users and teams in the caller's org who can open the app, for pickers and sharing:
+
+```go
+dir, err := stackure.Directory(r)
+// dir.Users: UserID, UserEmail, UserFirstName, UserLastName
+// dir.Teams: TeamID, TeamName
+```
+
+`Directory` uses the request's session cookie, so call it from a route behind `Auth`; MCP bearer tokens are not accepted. No valid session is an `auth` error.
+
+Stackure defines no in-app permissions. Your app decides what these facts mean.
+
 ## Verify manually
 
 ```go

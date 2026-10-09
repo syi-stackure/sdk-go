@@ -64,11 +64,30 @@ func appID() (string, error) {
 }
 
 type User struct {
+	UserID         string `json:"user_id"`
+	AccountID      string `json:"account_id"`
+	UserEmail      string `json:"user_email"`
+	UserFirstName  string `json:"user_first_name"`
+	UserLastName   string `json:"user_last_name"`
+	UserIsAppAdmin bool   `json:"user_is_app_admin"`
+	UserTeams      []Team `json:"user_teams"`
+}
+
+type Team struct {
+	TeamID   string `json:"team_id"`
+	TeamName string `json:"team_name"`
+}
+
+type DirectoryUser struct {
 	UserID        string `json:"user_id"`
-	AccountID     string `json:"account_id"`
 	UserEmail     string `json:"user_email"`
 	UserFirstName string `json:"user_first_name"`
 	UserLastName  string `json:"user_last_name"`
+}
+
+type DirectoryResult struct {
+	Users []DirectoryUser `json:"users"`
+	Teams []Team          `json:"teams"`
 }
 
 type MagicLinkResponse struct {
@@ -270,6 +289,32 @@ func validateToken(tok string, r *http.Request) (*Session, error) {
 		return &Session{SignInURL: baseURL() + "/sign-in/magic-link?app_id=" + id}, nil
 	}
 
+	out := &Session{}
+	if err := getWithSession(r, "/api/public/auth/session/validate", id, tok, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func Directory(r *http.Request) (*DirectoryResult, error) {
+	id, err := appID()
+	if err != nil {
+		return nil, err
+	}
+
+	tok := sessionToken(r)
+	if !uuidRegex.MatchString(tok) {
+		return nil, newErr("auth", 0, "invalid session")
+	}
+
+	out := &DirectoryResult{}
+	if err := getWithSession(r, "/api/public/directory", id, tok, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func getWithSession(r *http.Request, path, id, tok string, out any) error {
 	o := callOpts{
 		query:   url.Values{"app_id": {id}},
 		ua:      r.UserAgent(),
@@ -277,16 +322,11 @@ func validateToken(tok string, r *http.Request) (*Session, error) {
 		cookies: []*http.Cookie{{Name: sessionCookie, Value: tok}},
 	}
 
-	st, b, err := request(r.Context(), http.MethodGet, "/api/public/auth/session/validate", o)
+	st, b, err := request(r.Context(), http.MethodGet, path, o)
 	if err != nil {
-		return nil, err
+		return err
 	}
-
-	out := &Session{}
-	if err := handleResponse(st, b, out); err != nil {
-		return nil, err
-	}
-	return out, nil
+	return handleResponse(st, b, out)
 }
 
 func validateMCP(r *http.Request) (*mcpSession, error) {

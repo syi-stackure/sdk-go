@@ -1,7 +1,7 @@
 // Package stackure is the Go SDK for the Stackure authentication API.
 //
 // Stackure provides passwordless B2B authentication. This SDK wraps the
-// public API behind five free functions and the Auth and MCP middleware.
+// public API behind six free functions and the Auth and MCP middleware.
 //
 // # Quickstart
 //
@@ -91,6 +91,24 @@
 // not signed in gets a 401 whose WWW-Authenticate header tells the AI client
 // where to sign in, and a check that cannot be completed gets a 503. The MCP
 // middleware never redirects and never reads or sets a cookie.
+//
+// # Identity facts
+//
+// Every authenticated User, from Auth or MCP, also carries two facts from the
+// user's Stackure org: UserIsAppAdmin is true when the user is an app admin or
+// owner there, in charge of the org's apps, and UserTeams lists the Stackure
+// teams they belong to (empty when none). Stackure defines no in-app
+// permissions; the app decides what these mean.
+//
+// List the users and teams in the caller's org who can open the app, for
+// pickers and sharing:
+//
+//	dir, err := stackure.Directory(r)
+//	// dir.Users, dir.Teams
+//
+// Directory is authenticated by the request's session cookie, like
+// ValidateSession, so call it from a route behind Auth. MCP bearer tokens are
+// not accepted. A request without a valid session gets an "auth" error.
 //
 // # Configuration
 //
