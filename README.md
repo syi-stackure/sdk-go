@@ -37,14 +37,14 @@ Every call has one 2-second deadline. The SDK retries once after 500 ms on a 5xx
 ```go
 import "stackure.com/sdk-go"
 
-http.Handle("/admin", stackure.Auth("can_approve_invoice")(handler))
+http.Handle("/admin", stackure.Auth()(handler))
 ```
 
 Access the authenticated user in your handler:
 
 ```go
 user := stackure.UserFromContext(r.Context())
-fmt.Println(user.UserEmail, user.AccountID, user.UserPermissions)
+fmt.Println(user.UserEmail, user.AccountID)
 ```
 
 - API requests get JSON errors
@@ -73,7 +73,7 @@ AI clients such as Claude, Claude Code, VS Code and Cursor sign users in through
 
 The MCP endpoint must be served from the same site as the app's registered URL unless an MCP URL is set for the app in Stackure.
 
-The user and permissions work as with `Auth`. A request that is not signed in gets a `401` that tells the AI client where to sign in, a missing permission gets a `403`, and a check that cannot be completed gets a `503`.
+The user is attached as with `Auth`. A request that is not signed in gets a `401` that tells the AI client where to sign in, and a check that cannot be completed gets a `503`.
 
 ## Verify manually
 

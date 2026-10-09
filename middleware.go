@@ -24,7 +24,7 @@ func isHTTPS(r *http.Request) bool {
 	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
 
-func Verify(r *http.Request, perms ...string) *VerifyResult {
+func Verify(r *http.Request) *VerifyResult {
 	session, err := ValidateSession(r)
 	if err != nil {
 		log.Printf("stackure: verification error: %v", err)
@@ -39,25 +39,7 @@ func Verify(r *http.Request, perms ...string) *VerifyResult {
 		}}
 	}
 
-	if len(perms) > 0 && !hasAnyPerm(session.User.UserPermissions, perms) {
-		return &VerifyResult{User: session.User, Error: &VerifyError{
-			Code:    403,
-			Message: "Requires one of: " + strings.Join(perms, ", "),
-		}}
-	}
-
 	return &VerifyResult{Authenticated: true, User: session.User}
-}
-
-func hasAnyPerm(have, want []string) bool {
-	for _, w := range want {
-		for _, h := range have {
-			if w == h {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func handoffToken(r *http.Request) string {
@@ -112,14 +94,14 @@ func safePath(p string) string {
 	return p
 }
 
-func Auth(perms ...string) func(http.Handler) http.Handler {
+func Auth() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if adoptToken(w, r) {
 				return
 			}
 
-			result := Verify(r, perms...)
+			result := Verify(r)
 
 			if !result.Authenticated && result.Error != nil {
 				if result.Error.Code == 401 {
@@ -131,11 +113,8 @@ func Auth(perms ...string) func(http.Handler) http.Handler {
 				}
 
 				label := "Error"
-				switch result.Error.Code {
-				case 401:
+				if result.Error.Code == 401 {
 					label = "Unauthorized"
-				case 403:
-					label = "Forbidden"
 				}
 
 				w.Header().Set("Content-Type", "application/json")
@@ -159,7 +138,7 @@ func mcpDeny(w http.ResponseWriter, code int, msg string) {
 	_, _ = io.WriteString(w, `{"error":"`+msg+`"}`)
 }
 
-func MCP(perms ...string) func(http.Handler) http.Handler {
+func MCP() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			session, err := validateMCP(r)
@@ -176,11 +155,6 @@ func MCP(perms ...string) func(http.Handler) http.Handler {
 				}
 				w.Header().Set("WWW-Authenticate", challenge)
 				mcpDeny(w, http.StatusUnauthorized, "unauthorized")
-				return
-			}
-
-			if len(perms) > 0 && !hasAnyPerm(session.User.UserPermissions, perms) {
-				mcpDeny(w, http.StatusForbidden, "forbidden")
 				return
 			}
 
