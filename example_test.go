@@ -48,6 +48,22 @@ func ExampleUserFromContext() {
 	})
 }
 
+func ExampleDirectory() {
+	http.Handle("/share", stackure.Auth()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		dir, err := stackure.Directory(r)
+		if err != nil {
+			http.Error(w, "directory unavailable", http.StatusBadGateway)
+			return
+		}
+		for _, u := range dir.Users {
+			fmt.Fprintln(w, u.UserEmail)
+		}
+		for _, t := range dir.Teams {
+			fmt.Fprintln(w, t.TeamName)
+		}
+	})))
+}
+
 func ExampleSendMagicLink() {
 	resp, err := stackure.SendMagicLink("user@example.com")
 	if err != nil {
