@@ -64,12 +64,11 @@ func appID() (string, error) {
 }
 
 type User struct {
-	UserID          string   `json:"user_id"`
-	AccountID       string   `json:"account_id"`
-	UserEmail       string   `json:"user_email"`
-	UserFirstName   string   `json:"user_first_name"`
-	UserLastName    string   `json:"user_last_name"`
-	UserPermissions []string `json:"user_permissions"`
+	UserID        string `json:"user_id"`
+	AccountID     string `json:"account_id"`
+	UserEmail     string `json:"user_email"`
+	UserFirstName string `json:"user_first_name"`
+	UserLastName  string `json:"user_last_name"`
 }
 
 type MagicLinkResponse struct {

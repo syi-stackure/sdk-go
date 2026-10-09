@@ -25,14 +25,13 @@ const (
 	mcpMetadata  = "https://stackure.test/.well-known/oauth-protected-resource/mcp/" + appID + "?resource=http%3A%2F%2Fapp.test%3A8080%2Fmcp"
 	mcpChallenge = `Bearer resource_metadata="` + mcpMetadata + `"`
 	mcpSignedOut = `{"authenticated":false,"sign_in_url":"https://stackure.test/sign-in/magic-link?app_id=` + appID + `","www_authenticate":"Bearer resource_metadata=\"` + mcpMetadata + `\""}`
-	mcpSignedIn  = `{"authenticated":true,"user":{"user_id":"2d6f0a1c-3b4e-4f5a-9b6c-7d8e9f0a1b2c","account_id":"9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d","user_email":"ada@example.com","user_first_name":"Ada","user_last_name":"Lovelace","user_permissions":["can_read","can_write"]}}`
-	mcpNoPerms   = `{"authenticated":true,"user":{"user_id":"2d6f0a1c-3b4e-4f5a-9b6c-7d8e9f0a1b2c","account_id":"9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d","user_email":"ada@example.com","user_first_name":"Ada","user_last_name":"Lovelace"}}`
+	mcpSignedIn  = `{"authenticated":true,"user":{"user_id":"2d6f0a1c-3b4e-4f5a-9b6c-7d8e9f0a1b2c","account_id":"9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d","user_email":"ada@example.com","user_first_name":"Ada","user_last_name":"Lovelace"}}`
 	mcpCall      = `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`
 	mcpTools     = `{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}`
 )
 
 func TestMCP(t *testing.T) {
-	bodies := map[int]string{200: mcpTools, 401: `{"error":"unauthorized"}`, 403: `{"error":"forbidden"}`, 503: `{"error":"unavailable"}`}
+	bodies := map[int]string{200: mcpTools, 401: `{"error":"unauthorized"}`, 503: `{"error":"unavailable"}`}
 	forwardedTLS := http.Header{"X-Forwarded-Proto": {"https"}}
 	for _, tc := range []struct {
 		name      string
@@ -42,7 +41,6 @@ func TestMCP(t *testing.T) {
 		auth      string
 		cookie    bool
 		handoff   bool
-		perms     []string
 		noSecret  bool
 		status    int
 		body      string
@@ -60,9 +58,6 @@ func TestMCP(t *testing.T) {
 		{name: "uppercase scheme", appID: appID, target: mcpURL, auth: "BEARER " + sessionToken, status: 200, body: mcpSignedIn, bearer: true, mcp: mcpURL, calls: 1, code: 200},
 		{name: "spaces after scheme", appID: appID, target: mcpURL, auth: "Bearer   " + sessionToken, status: 200, body: mcpSignedIn, bearer: true, mcp: mcpURL, calls: 1, code: 200},
 		{name: "valid bearer with session cookie", appID: appID, target: mcpURL, auth: mcpBearer, cookie: true, status: 200, body: mcpSignedIn, bearer: true, mcp: mcpURL, calls: 1, code: 200},
-		{name: "valid bearer without permissions", appID: appID, target: mcpURL, auth: mcpBearer, status: 200, body: mcpNoPerms, bearer: true, mcp: mcpURL, calls: 1, code: 200},
-		{name: "required permission held", appID: appID, target: mcpURL, auth: mcpBearer, perms: []string{"can_write"}, status: 200, body: mcpSignedIn, bearer: true, mcp: mcpURL, calls: 1, code: 200},
-		{name: "one of the required permissions held", appID: appID, target: mcpURL, auth: mcpBearer, perms: []string{"can_admin", "can_read"}, status: 200, body: mcpSignedIn, bearer: true, mcp: mcpURL, calls: 1, code: 200},
 		{name: "https over TLS", appID: appID, target: mcpTLSURL, auth: mcpBearer, status: 200, body: mcpSignedIn, bearer: true, mcp: mcpTLSURL, calls: 1, code: 200},
 		{name: "https behind TLS proxy", appID: appID, target: mcpURL, hdr: forwardedTLS, auth: mcpBearer, status: 200, body: mcpSignedIn, bearer: true, mcp: mcpTLSURL, calls: 1, code: 200},
 		{name: "http forwarded", appID: appID, target: mcpURL, hdr: http.Header{"X-Forwarded-Proto": {"http"}}, auth: mcpBearer, status: 200, body: mcpSignedIn, bearer: true, mcp: mcpURL, calls: 1, code: 200},
@@ -87,14 +82,9 @@ func TestMCP(t *testing.T) {
 		{name: "sign-in handoff without bearer", appID: appID, target: mcpURL, handoff: true, status: 200, body: mcpSignedOut, mcp: mcpURL, calls: 1, code: 401, challenge: mcpChallenge},
 		{name: "browser without bearer", appID: appID, target: mcpURL, hdr: http.Header{"Accept": {"text/html"}}, status: 200, body: mcpSignedOut, mcp: mcpURL, calls: 1, code: 401, challenge: mcpChallenge},
 		{name: "bearer rejected", appID: appID, target: mcpURL, auth: mcpBearer, status: 200, body: mcpSignedOut, bearer: true, mcp: mcpURL, calls: 1, code: 401, challenge: mcpChallenge},
-		{name: "bearer rejected with permission required", appID: appID, target: mcpURL, auth: mcpBearer, perms: []string{"can_write"}, status: 200, body: mcpSignedOut, bearer: true, mcp: mcpURL, calls: 1, code: 401, challenge: mcpChallenge},
 		{name: "no challenge in response", appID: appID, target: mcpURL, auth: mcpBearer, status: 200, body: `{"authenticated":false}`, bearer: true, mcp: mcpURL, calls: 1, code: 401, challenge: "Bearer"},
 		{name: "authenticated without user", appID: appID, target: mcpURL, auth: mcpBearer, status: 200, body: `{"authenticated":true}`, bearer: true, mcp: mcpURL, calls: 1, code: 401, challenge: "Bearer"},
 		{name: "user without authenticated", appID: appID, target: mcpURL, auth: mcpBearer, status: 200, body: strings.Replace(mcpSignedIn, "true", "false", 1), bearer: true, mcp: mcpURL, calls: 1, code: 401, challenge: "Bearer"},
-		{name: "required permission missing", appID: appID, target: mcpURL, auth: mcpBearer, perms: []string{"can_admin"}, status: 200, body: mcpSignedIn, bearer: true, mcp: mcpURL, calls: 1, code: 403},
-		{name: "every required permission missing", appID: appID, target: mcpURL, auth: mcpBearer, perms: []string{"can_admin", "can_delete"}, status: 200, body: mcpSignedIn, bearer: true, mcp: mcpURL, calls: 1, code: 403},
-		{name: "required permission in other case", appID: appID, target: mcpURL, auth: mcpBearer, perms: []string{"CAN_WRITE"}, status: 200, body: mcpSignedIn, bearer: true, mcp: mcpURL, calls: 1, code: 403},
-		{name: "permission required with none granted", appID: appID, target: mcpURL, auth: mcpBearer, perms: []string{"can_write"}, status: 200, body: mcpNoPerms, bearer: true, mcp: mcpURL, calls: 1, code: 403},
 		{name: "invalid app secret", appID: appID, target: mcpURL, auth: mcpBearer, status: 401, body: mcpSignedIn, bearer: true, mcp: mcpURL, calls: 1, code: 503},
 		{name: "bad request", appID: appID, target: mcpURL, auth: mcpBearer, status: 400, body: mcpSignedIn, bearer: true, mcp: mcpURL, calls: 1, code: 503},
 		{name: "forbidden", appID: appID, target: mcpURL, auth: mcpBearer, status: 403, body: mcpSignedIn, bearer: true, mcp: mcpURL, calls: 1, code: 503},
@@ -186,7 +176,7 @@ func TestMCP(t *testing.T) {
 			var user *stackure.User
 			var received string
 			w := httptest.NewRecorder()
-			stackure.MCP(tc.perms...)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			stackure.MCP()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				reached = true
 				user = stackure.UserFromContext(r.Context())
 				b, _ := io.ReadAll(r.Body)
@@ -217,9 +207,6 @@ func TestMCP(t *testing.T) {
 					UserEmail:     "ada@example.com",
 					UserFirstName: "Ada",
 					UserLastName:  "Lovelace",
-				}
-				if tc.body == mcpSignedIn {
-					want.UserPermissions = []string{"can_read", "can_write"}
 				}
 				if !reached || user == nil || !reflect.DeepEqual(*user, want) {
 					t.Errorf("reached = %v, user = %+v, want %+v", reached, user, want)
@@ -276,7 +263,6 @@ func TestMCPMounted(t *testing.T) {
 	})
 	mux := http.NewServeMux()
 	mux.Handle("/api/mcp", stackure.MCP()(echo))
-	mux.Handle("/admin/mcp", stackure.MCP("can_admin")(echo))
 	app := httptest.NewServer(mux)
 	defer app.Close()
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -295,7 +281,6 @@ func TestMCPMounted(t *testing.T) {
 		{name: "post without bearer", method: "POST", path: "/api/mcp", hdr: http.Header{}, mcp: "/api/mcp", code: 401, challenge: mcpChallenge, body: `{"error":"unauthorized"}`},
 		{name: "get from browser with cookie", method: "GET", path: "/api/mcp", hdr: http.Header{"Accept": {"text/html"}, "Cookie": {"session=" + sessionToken}}, mcp: "/api/mcp", code: 401, challenge: mcpChallenge, body: `{"error":"unauthorized"}`},
 		{name: "delete with bearer", method: "DELETE", path: "/api/mcp", hdr: http.Header{"Authorization": {mcpBearer}}, mcp: "/api/mcp", code: 200, body: "ada@example.com " + mcpCall},
-		{name: "post with bearer lacking permission", method: "POST", path: "/admin/mcp", hdr: http.Header{"Authorization": {mcpBearer}}, mcp: "/admin/mcp", code: 403, body: `{"error":"forbidden"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls.Store(0)

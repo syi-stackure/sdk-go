@@ -7,7 +7,7 @@
 //
 // Protect an HTTP route:
 //
-//	http.Handle("/admin", stackure.Auth("can_approve_invoice")(handler))
+//	http.Handle("/admin", stackure.Auth()(handler))
 //
 // Access the authenticated user inside the handler:
 //
@@ -87,11 +87,10 @@
 // URL unless an MCP URL is set for the app in Stackure. The SDK tells Stackure
 // which endpoint was reached from the request's scheme, Host header and path.
 //
-// The user is attached to the request context as with Auth, and permissions
-// are passed the same way. A request that is not signed in gets a 401 whose
-// WWW-Authenticate header tells the AI client where to sign in, a missing
-// permission gets a 403, and a check that cannot be completed gets a 503. The
-// MCP middleware never redirects and never reads or sets a cookie.
+// The user is attached to the request context as with Auth. A request that is
+// not signed in gets a 401 whose WWW-Authenticate header tells the AI client
+// where to sign in, and a check that cannot be completed gets a 503. The MCP
+// middleware never redirects and never reads or sets a cookie.
 //
 // # Configuration
 //

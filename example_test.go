@@ -14,7 +14,7 @@ func ExampleAuth() {
 		fmt.Fprintf(w, "hello %s", user.UserEmail)
 	})
 
-	http.Handle("/admin", stackure.Auth("can_approve_invoice")(protected))
+	http.Handle("/admin", stackure.Auth()(protected))
 }
 
 func ExampleMCP() {
@@ -23,12 +23,12 @@ func ExampleMCP() {
 		fmt.Fprintf(w, "hello %s", user.UserEmail)
 	})
 
-	http.Handle("/mcp", stackure.MCP("can_approve_invoice")(server))
+	http.Handle("/mcp", stackure.MCP()(server))
 }
 
 func ExampleVerify() {
 	http.HandleFunc("/report", func(w http.ResponseWriter, r *http.Request) {
-		result := stackure.Verify(r, "can_approve_invoice")
+		result := stackure.Verify(r)
 		if !result.Authenticated {
 			http.Error(w, result.Error.Message, result.Error.Code)
 			return
