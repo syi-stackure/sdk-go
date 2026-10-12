@@ -90,6 +90,7 @@ type DirectoryOptions struct {
 	Query  string
 	Cursor string
 	Limit  int
+	IDs    []string
 }
 
 type DirectoryPage[T any] struct {
@@ -337,6 +338,7 @@ func directory[T any](r *http.Request, path string, o DirectoryOptions) (*Direct
 	if o.Limit != 0 {
 		q.Set("limit", strconv.Itoa(o.Limit))
 	}
+	q["id"] = o.IDs
 	var h http.Header
 	out := &DirectoryPage[T]{}
 	if err := getWithSession(r, path, q, tok, &h, &out.Items); err != nil {

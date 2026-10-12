@@ -116,6 +116,7 @@ func TestDirectory(t *testing.T) {
 		}{
 			{name: "first page", cookie: sessionToken, opts: stackure.DirectoryOptions{Query: "ada lo", Limit: 2}, query: "&limit=2&q=ada+lo", status: 200, body: "[ITEM]", next: "c1", total: "3", calls: 1, items: 1, wantTotal: &three},
 			{name: "next page", cookie: sessionToken, opts: stackure.DirectoryOptions{Cursor: "c1"}, query: "&cursor=c1", status: 200, body: "[ITEM]", calls: 1, items: 1},
+			{name: "by ids", cookie: sessionToken, opts: stackure.DirectoryOptions{IDs: []string{"a", "b"}, Limit: 200}, query: "&id=a&id=b&limit=200", status: 200, body: "[ITEM]", calls: 1, items: 1},
 			{name: "empty", cookie: sessionToken, status: 200, body: "[]", total: "0", calls: 1, wantTotal: new(int)},
 			{name: "malformed total", cookie: sessionToken, status: 200, body: "[ITEM]", total: "many", calls: 1, items: 1},
 			{name: "invalid session", cookie: sessionToken, status: 401, body: `{"error":"invalid session"}`, calls: 1, code: "auth", statusCode: 401},
