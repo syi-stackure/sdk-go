@@ -1,7 +1,7 @@
 // Package stackure is the Go SDK for the Stackure authentication API.
 //
 // Stackure provides passwordless B2B authentication. This SDK wraps the
-// public API behind 6 free functions and the Auth and MCP middleware.
+// public API behind 7 free functions and the Auth and MCP middleware.
 //
 // # Quickstart
 //
@@ -100,15 +100,22 @@
 // teams they belong to (empty when none). Stackure defines no in-app
 // permissions; the app decides what these mean.
 //
-// List the users and teams in the caller's org who can open the app, for
-// pickers and sharing:
+// List the users in the caller's org who can open the app, and the teams that
+// have it, for pickers and sharing. Each call returns one page, sorted by name:
 //
-//	dir, err := stackure.Directory(r)
-//	// dir.Users, dir.Teams
+//	page, err := stackure.DirectoryUsers(r, stackure.DirectoryOptions{Query: "ada"})
+//	// page.Items, page.NextCursor, page.Total
+//	teams, err := stackure.DirectoryTeams(r, stackure.DirectoryOptions{})
 //
-// Directory is authenticated by the request's session cookie, like
-// ValidateSession, so call it from a route behind Auth. MCP bearer tokens are
-// not accepted. A request without a valid session gets an "auth" error.
+// Query matches a user's name, email and job title, or a team's name. Limit is
+// the page size: 100 by default, 200 at most. Pass NextCursor as Cursor to get
+// the next page; it's empty on the last one. Total is set on the first page
+// when there are 10,000 matches or fewer.
+//
+// DirectoryUsers and DirectoryTeams are authenticated by the request's session
+// cookie, like ValidateSession, so call them from a route behind Auth. MCP
+// bearer tokens are not accepted. A request without a valid session gets an
+// "auth" error.
 //
 // # Configuration
 //

@@ -48,17 +48,34 @@ func ExampleUserFromContext() {
 	})
 }
 
-func ExampleDirectory() {
+func ExampleDirectoryUsers() {
 	http.Handle("/share", stackure.Auth()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		dir, err := stackure.Directory(r)
+		o := stackure.DirectoryOptions{Query: r.URL.Query().Get("q")}
+		for {
+			page, err := stackure.DirectoryUsers(r, o)
+			if err != nil {
+				http.Error(w, "directory unavailable", http.StatusBadGateway)
+				return
+			}
+			for _, u := range page.Items {
+				fmt.Fprintln(w, u.UserEmail)
+			}
+			if page.NextCursor == "" {
+				return
+			}
+			o.Cursor = page.NextCursor
+		}
+	})))
+}
+
+func ExampleDirectoryTeams() {
+	http.Handle("/teams", stackure.Auth()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page, err := stackure.DirectoryTeams(r, stackure.DirectoryOptions{Limit: 50})
 		if err != nil {
 			http.Error(w, "directory unavailable", http.StatusBadGateway)
 			return
 		}
-		for _, u := range dir.Users {
-			fmt.Fprintln(w, u.UserEmail)
-		}
-		for _, t := range dir.Teams {
+		for _, t := range page.Items {
 			fmt.Fprintln(w, t.TeamName)
 		}
 	})))
