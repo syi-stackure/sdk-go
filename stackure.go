@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -85,9 +86,16 @@ type DirectoryUser struct {
 	UserLastName  string `json:"user_last_name"`
 }
 
-type DirectoryResult struct {
-	Users []DirectoryUser `json:"users"`
-	Teams []Team          `json:"teams"`
+type DirectoryOptions struct {
+	Query  string
+	Cursor string
+	Limit  int
+}
+
+type DirectoryPage[T any] struct {
+	Items      []T
+	NextCursor string
+	Total      *int
 }
 
 type MagicLinkResponse struct {
@@ -125,6 +133,7 @@ type callOpts struct {
 	bearer  string
 	token   string
 	noBody  bool
+	header  *http.Header
 }
 
 func request(ctx context.Context, method, path string, o callOpts) (int, []byte, error) {
@@ -183,6 +192,9 @@ func request(ctx context.Context, method, path string, o callOpts) (int, []byte,
 		resp, err := httpClient.Do(req)
 		var b []byte
 		if err == nil {
+			if o.header != nil {
+				*o.header = resp.Header
+			}
 			if !o.noBody {
 				b, err = io.ReadAll(resp.Body)
 			}
@@ -290,13 +302,21 @@ func validateToken(tok string, r *http.Request) (*Session, error) {
 	}
 
 	out := &Session{}
-	if err := getWithSession(r, "/api/public/auth/session/validate", id, tok, out); err != nil {
+	if err := getWithSession(r, "/api/public/auth/session/validate", url.Values{"app_id": {id}}, tok, nil, out); err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func Directory(r *http.Request) (*DirectoryResult, error) {
+func DirectoryUsers(r *http.Request, o DirectoryOptions) (*DirectoryPage[DirectoryUser], error) {
+	return directory[DirectoryUser](r, "/api/public/directory/users", o)
+}
+
+func DirectoryTeams(r *http.Request, o DirectoryOptions) (*DirectoryPage[Team], error) {
+	return directory[Team](r, "/api/public/directory/teams", o)
+}
+
+func directory[T any](r *http.Request, path string, o DirectoryOptions) (*DirectoryPage[T], error) {
 	id, err := appID()
 	if err != nil {
 		return nil, err
@@ -307,19 +327,35 @@ func Directory(r *http.Request) (*DirectoryResult, error) {
 		return nil, newErr("auth", 0, "invalid session")
 	}
 
-	out := &DirectoryResult{}
-	if err := getWithSession(r, "/api/public/directory", id, tok, out); err != nil {
+	q := url.Values{"app_id": {id}}
+	if o.Query != "" {
+		q.Set("q", o.Query)
+	}
+	if o.Cursor != "" {
+		q.Set("cursor", o.Cursor)
+	}
+	if o.Limit != 0 {
+		q.Set("limit", strconv.Itoa(o.Limit))
+	}
+	var h http.Header
+	out := &DirectoryPage[T]{}
+	if err := getWithSession(r, path, q, tok, &h, &out.Items); err != nil {
 		return nil, err
+	}
+	out.NextCursor = h.Get("X-Next-Cursor")
+	if n, err := strconv.Atoi(h.Get("X-Total-Count")); err == nil {
+		out.Total = &n
 	}
 	return out, nil
 }
 
-func getWithSession(r *http.Request, path, id, tok string, out any) error {
+func getWithSession(r *http.Request, path string, q url.Values, tok string, h *http.Header, out any) error {
 	o := callOpts{
-		query:   url.Values{"app_id": {id}},
+		query:   q,
 		ua:      r.UserAgent(),
 		ip:      clientIP(r),
 		cookies: []*http.Cookie{{Name: sessionCookie, Value: tok}},
+		header:  h,
 	}
 
 	st, b, err := request(r.Context(), http.MethodGet, path, o)
