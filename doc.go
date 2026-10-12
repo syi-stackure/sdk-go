@@ -110,7 +110,8 @@
 // Query matches a user's name, email and job title, or a team's name. Limit is
 // the page size: 100 by default, 200 at most. Pass NextCursor as Cursor to get
 // the next page; it's empty on the last one. Total is set on the first page
-// when there are 10,000 matches or fewer.
+// when there are 10,000 matches or fewer. IDs returns only those IDs that can
+// open the app, up to 200, to check or name people and teams you already store.
 //
 // DirectoryUsers and DirectoryTeams are authenticated by the request's session
 // cookie, like ValidateSession, so call them from a route behind Auth. MCP
