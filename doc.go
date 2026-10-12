@@ -1,7 +1,7 @@
 // Package stackure is the Go SDK for the Stackure authentication API.
 //
 // Stackure provides passwordless B2B authentication. This SDK wraps the
-// public API behind six free functions and the Auth and MCP middleware.
+// public API behind 6 free functions and the Auth and MCP middleware.
 //
 // # Quickstart
 //
@@ -24,7 +24,7 @@
 //
 //	_, err := stackure.SendMagicLink("user@example.com")
 //
-// Log the user out:
+// Sign the user out:
 //
 //	http.HandleFunc("/logout", stackure.Logout)
 //
@@ -51,9 +51,9 @@
 // Invalid tokens are ignored, and handoff bodies over 4 KB are ignored (treated
 // as no token) and passed to your app untouched.
 //
-// A newly registered app is not usable by anyone, even its creator, until it is
-// shared with the organization or assigned to a team in Stackure. Do that
-// before testing sign-in.
+// People can open a newly registered app once an app admin gives it to
+// everyone in the organization or to one of their teams in Stackure. App
+// admins and the owner can always open it, so they can test sign-in first.
 //
 // # Session binding
 //
@@ -94,7 +94,7 @@
 //
 // # Identity facts
 //
-// Every authenticated User, from Auth or MCP, also carries two facts from the
+// Every authenticated User, from Auth or MCP, also carries 2 facts from the
 // user's Stackure org: UserIsAppAdmin is true when the user is an app admin or
 // owner there, in charge of the org's apps, and UserTeams lists the Stackure
 // teams they belong to (empty when none). Stackure defines no in-app
