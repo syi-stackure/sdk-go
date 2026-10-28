@@ -5,6 +5,9 @@ import "regexp"
 var (
 	emailRegex = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
 	uuidRegex  = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+	codeRegex  = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+	loopbackRegex = regexp.MustCompile(`^(localhost|127\.0\.0\.1)(:\d+)?$`)
 )
 
 // validateEmail returns a "validation"-coded StackureError when email is not

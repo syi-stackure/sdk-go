@@ -3,6 +3,9 @@ package stackure
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log"
@@ -25,7 +28,11 @@ func isHTTPS(r *http.Request) bool {
 }
 
 func Verify(r *http.Request) *VerifyResult {
-	session, err := ValidateSession(r)
+	return check(r, nil)
+}
+
+func check(r *http.Request, dev *devSignIn) *VerifyResult {
+	session, err := validateToken(sessionToken(r), r, dev)
 	if err != nil {
 		log.Printf("stackure: verification error: %v", err)
 		return &VerifyResult{Error: &VerifyError{Code: 500, Message: "Authentication verification failed"}}
@@ -42,47 +49,99 @@ func Verify(r *http.Request) *VerifyResult {
 	return &VerifyResult{Authenticated: true, User: session.User}
 }
 
-func handoffToken(r *http.Request) string {
+func handoffForm(r *http.Request, local bool) url.Values {
 	if r.Method != http.MethodPost {
-		return ""
+		return nil
 	}
-	if r.Header.Get("Origin") != origin() {
-		return ""
+	if o := r.Header.Get("Origin"); o != origin() && (!local || o != "null") {
+		return nil
 	}
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-www-form-urlencoded") {
-		return ""
+		return nil
 	}
 	b, _ := io.ReadAll(io.LimitReader(r.Body, maxHandoffBody+1))
 	r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(b), r.Body))
 	if len(b) > maxHandoffBody {
-		return ""
+		return nil
 	}
 	v, err := url.ParseQuery(string(b))
 	if err != nil {
-		return ""
+		return nil
 	}
-	return v.Get(tokenParam)
+	return v
 }
 
-func adoptToken(w http.ResponseWriter, r *http.Request) bool {
-	tok := handoffToken(r)
-	if tok == "" {
-		return false
-	}
-	if s, err := validateToken(tok, r); err != nil || !s.Authenticated {
-		return false
-	}
-
+func setCookie(w http.ResponseWriter, r *http.Request, name, value string, maxAge int) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookie,
-		Value:    tok,
+		Name:     name,
+		Value:    value,
 		Path:     "/",
-		MaxAge:   604800,
+		MaxAge:   maxAge,
 		HttpOnly: true,
 		Secure:   isHTTPS(r),
 		SameSite: http.SameSiteLaxMode,
 	})
+}
 
+func adoptToken(w http.ResponseWriter, r *http.Request, form url.Values) bool {
+	tok := form.Get(tokenParam)
+	if tok == "" || r.Header.Get("Origin") != origin() {
+		return false
+	}
+	if s, err := validateToken(tok, r, nil); err != nil || !s.Authenticated {
+		return false
+	}
+
+	setCookie(w, r, sessionCookie, tok, sessionMaxAge)
+	http.Redirect(w, r, safePath(r.URL.RequestURI()), http.StatusSeeOther)
+	return true
+}
+
+func newVerifier() string {
+	b := make([]byte, 32)
+	_, _ = rand.Read(b)
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+func newDevSignIn(r *http.Request, verifier string) *devSignIn {
+	scheme := "http"
+	if isHTTPS(r) {
+		scheme = "https"
+	}
+	sum := sha256.Sum256([]byte(verifier))
+	return &devSignIn{
+		url:       scheme + "://" + r.Host + safePath(r.URL.RequestURI()),
+		challenge: base64.RawURLEncoding.EncodeToString(sum[:]),
+	}
+}
+
+func stashCode(w http.ResponseWriter, r *http.Request, form url.Values) bool {
+	code := form.Get(codeParam)
+	if !codeRegex.MatchString(code) {
+		return false
+	}
+
+	setCookie(w, r, codeCookie, code, codeMaxAge)
+	http.Redirect(w, r, safePath(r.URL.RequestURI()), http.StatusSeeOther)
+	return true
+}
+
+func redeemCode(w http.ResponseWriter, r *http.Request) bool {
+	code := cookie(r, codeCookie)
+	if code == "" {
+		return false
+	}
+	setCookie(w, r, codeCookie, "", -1)
+	setCookie(w, r, verifierCookie, "", -1)
+
+	tok, err := exchangeCode(code, cookie(r, verifierCookie), r)
+	if err != nil {
+		log.Printf("stackure: localhost sign-in failed: %v", err)
+		deny(w, http.StatusUnauthorized, "localhost sign-in failed, reload to try again")
+		return true
+	}
+
+	setCookie(w, r, sessionCookie, tok, sessionMaxAge)
 	http.Redirect(w, r, safePath(r.URL.RequestURI()), http.StatusSeeOther)
 	return true
 }
@@ -97,16 +156,30 @@ func safePath(p string) string {
 func Auth() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if adoptToken(w, r) {
+			local := isLoopback(r)
+			form := handoffForm(r, local)
+			if adoptToken(w, r, form) {
+				return
+			}
+			if local && (stashCode(w, r, form) || redeemCode(w, r)) {
 				return
 			}
 
-			result := Verify(r)
+			var verifier string
+			var dev *devSignIn
+			if local {
+				verifier = newVerifier()
+				dev = newDevSignIn(r, verifier)
+			}
+			result := check(r, dev)
 
 			if !result.Authenticated && result.Error != nil {
 				if result.Error.Code == 401 {
 					accept := r.Header.Get("Accept")
 					if strings.Contains(accept, "text/html") && !strings.Contains(accept, "application/json") && result.Error.SignInURL != "" {
+						if local {
+							setCookie(w, r, verifierCookie, verifier, verifierMaxAge)
+						}
 						http.Redirect(w, r, result.Error.SignInURL, http.StatusFound)
 						return
 					}
@@ -132,7 +205,7 @@ func Auth() func(http.Handler) http.Handler {
 	}
 }
 
-func mcpDeny(w http.ResponseWriter, code int, msg string) {
+func deny(w http.ResponseWriter, code int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_, _ = io.WriteString(w, `{"error":"`+msg+`"}`)
@@ -144,7 +217,7 @@ func MCP() func(http.Handler) http.Handler {
 			session, err := validateMCP(r)
 			if err != nil {
 				log.Printf("stackure: verification error: %v", err)
-				mcpDeny(w, http.StatusServiceUnavailable, "unavailable")
+				deny(w, http.StatusServiceUnavailable, "unavailable")
 				return
 			}
 
@@ -154,7 +227,7 @@ func MCP() func(http.Handler) http.Handler {
 					challenge = "Bearer"
 				}
 				w.Header().Set("WWW-Authenticate", challenge)
-				mcpDeny(w, http.StatusUnauthorized, "unauthorized")
+				deny(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}
 
@@ -188,14 +261,6 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 			dest = baseURL() + "/signout"
 		}
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookie,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		Secure:   isHTTPS(r),
-		SameSite: http.SameSiteLaxMode,
-	})
+	setCookie(w, r, sessionCookie, "", -1)
 	http.Redirect(w, r, dest, http.StatusSeeOther)
 }
