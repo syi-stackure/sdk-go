@@ -20,6 +20,12 @@ const (
 	defaultBaseURL = "https://stackure.com"
 	sessionCookie  = "session"
 	tokenParam     = "session_token"
+	codeParam      = "stackure_code"
+	codeCookie     = "stackure_code"
+	verifierCookie = "stackure_verifier"
+	sessionMaxAge  = 7 * 24 * 3600
+	codeMaxAge     = 60
+	verifierMaxAge = 15 * 60
 	maxHandoffBody = 4 << 10
 	requestTimeout = 2 * time.Second
 	maxRetries     = 1
@@ -126,8 +132,13 @@ type mcpSession struct {
 	WWWAuthenticate string `json:"www_authenticate"`
 }
 
+type devSignIn struct {
+	url, challenge string
+}
+
 type callOpts struct {
 	body    any
+	once    bool
 	query   url.Values
 	cookies []*http.Cookie
 	ua, ip  string
@@ -204,7 +215,7 @@ func request(ctx context.Context, method, path string, o callOpts) (int, []byte,
 				return resp.StatusCode, b, nil
 			}
 		}
-		if ctx.Err() != nil || attempt == maxRetries || time.Until(deadline) <= retryDelay {
+		if o.once || ctx.Err() != nil || attempt == maxRetries || time.Until(deadline) <= retryDelay {
 			if err != nil {
 				return fail(err)
 			}
@@ -252,11 +263,19 @@ func clientIP(r *http.Request) string {
 	return h
 }
 
-func sessionToken(r *http.Request) string {
-	if c, err := r.Cookie(sessionCookie); err == nil {
+func cookie(r *http.Request, name string) string {
+	if c, err := r.Cookie(name); err == nil {
 		return c.Value
 	}
 	return ""
+}
+
+func sessionToken(r *http.Request) string {
+	return cookie(r, sessionCookie)
+}
+
+func isLoopback(r *http.Request) bool {
+	return loopbackRegex.MatchString(strings.ToLower(r.Host))
 }
 
 func bearerToken(r *http.Request) string {
@@ -289,24 +308,56 @@ func SendMagicLink(email string) (*MagicLinkResponse, error) {
 }
 
 func ValidateSession(r *http.Request) (*Session, error) {
-	return validateToken(sessionToken(r), r)
+	return validateToken(sessionToken(r), r, nil)
 }
 
-func validateToken(tok string, r *http.Request) (*Session, error) {
+func validateToken(tok string, r *http.Request, dev *devSignIn) (*Session, error) {
 	id, err := appID()
 	if err != nil {
 		return nil, err
 	}
 
 	if !uuidRegex.MatchString(tok) {
-		return &Session{SignInURL: baseURL() + "/sign-in/magic-link?app_id=" + id}, nil
+		if dev == nil {
+			return &Session{SignInURL: baseURL() + "/sign-in/magic-link?app_id=" + id}, nil
+		}
+		tok = ""
 	}
 
+	q := url.Values{"app_id": {id}}
+	if dev != nil {
+		q.Set("return", dev.url)
+		q.Set("challenge", dev.challenge)
+	}
 	out := &Session{}
-	if err := getWithSession(r, "/api/public/auth/session/validate", url.Values{"app_id": {id}}, tok, nil, out); err != nil {
+	if err := getWithSession(r, "/api/public/auth/session/validate", q, tok, nil, out); err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+func exchangeCode(code, verifier string, r *http.Request) (string, error) {
+	id, err := appID()
+	if err != nil {
+		return "", err
+	}
+
+	body := map[string]string{"app_id": id, "code": code, "verifier": verifier}
+	st, b, err := request(r.Context(), http.MethodPost, "/api/public/auth/session/exchange", callOpts{body: body, once: true, ua: r.UserAgent(), ip: clientIP(r)})
+	if err != nil {
+		return "", err
+	}
+
+	var out struct {
+		SessionToken string `json:"session_token"`
+	}
+	if err := handleResponse(st, b, &out); err != nil {
+		return "", err
+	}
+	if !uuidRegex.MatchString(out.SessionToken) {
+		return "", newErr("network", st, "invalid exchange response")
+	}
+	return out.SessionToken, nil
 }
 
 func DirectoryUsers(r *http.Request, o DirectoryOptions) (*DirectoryPage[DirectoryUser], error) {
@@ -353,11 +404,13 @@ func directory[T any](r *http.Request, path string, o DirectoryOptions) (*Direct
 
 func getWithSession(r *http.Request, path string, q url.Values, tok string, h *http.Header, out any) error {
 	o := callOpts{
-		query:   q,
-		ua:      r.UserAgent(),
-		ip:      clientIP(r),
-		cookies: []*http.Cookie{{Name: sessionCookie, Value: tok}},
-		header:  h,
+		query:  q,
+		ua:     r.UserAgent(),
+		ip:     clientIP(r),
+		header: h,
+	}
+	if tok != "" {
+		o.cookies = []*http.Cookie{{Name: sessionCookie, Value: tok}}
 	}
 
 	st, b, err := request(r.Context(), http.MethodGet, path, o)

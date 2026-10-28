@@ -51,6 +51,12 @@
 // Invalid tokens are ignored, and handoff bodies over 4 KB are ignored (treated
 // as no token) and passed to your app untouched.
 //
+// On localhost or 127.0.0.1 with the app's development secret, sign-in
+// returns to the page that asked for it: Stackure posts a one-time code there,
+// and the Auth middleware swaps it for a session using the secret and a check
+// value it keeps in a cookie. Only app admins of the organization that added
+// the app can sign in this way.
+//
 // People can open a newly registered app once an app admin gives it to
 // everyone in the organization or to one of their teams in Stackure. App
 // admins and the owner can always open it, so they can test sign-in first.
@@ -64,7 +70,8 @@
 //
 // Every request with a session token is validated against Stackure, so revoking
 // a session takes effect immediately. Requests without a well-formed token get
-// the sign-in URL without a Stackure call.
+// the sign-in URL without a Stackure call, except under Auth on localhost,
+// where the sign-in URL comes from Stackure.
 //
 // # Content negotiation
 //
@@ -136,7 +143,8 @@
 // connection failure (refused, reset, DNS, TLS), and only if more than 500 ms
 // of the deadline remain. Timeouts are never retried and surface as a
 // "timeout" error, even when they happen while reading the body. Redirects are
-// not followed; a 3xx response surfaces as a "network" error.
+// not followed; a 3xx response surfaces as a "network" error. The localhost
+// sign-in code swap is never retried, because each code works only once.
 //
 // # Errors
 //
