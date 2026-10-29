@@ -76,8 +76,9 @@
 // # Content negotiation
 //
 // The Auth middleware inspects the Accept header. Browser requests (Accept:
-// text/html) redirect to the sign-in URL on 401. API requests (Accept:
-// application/json) receive a JSON error body.
+// text/html) redirect to the sign-in URL on 401, and to a Stackure page that
+// says sign-in couldn't be confirmed when the check fails. API requests
+// (Accept: application/json) receive a JSON error body.
 //
 // # MCP
 //
