@@ -34,8 +34,7 @@ func Verify(r *http.Request) *VerifyResult {
 func check(r *http.Request, dev *devSignIn) *VerifyResult {
 	session, err := validateToken(sessionToken(r), r, dev)
 	if err != nil {
-		log.Printf("stackure: verification error: %v", err)
-		return &VerifyResult{Error: &VerifyError{Code: 500, Message: "Authentication verification failed"}}
+		return &VerifyResult{Error: verifyFailed(err)}
 	}
 
 	if !session.Authenticated || session.User == nil {
@@ -47,6 +46,20 @@ func check(r *http.Request, dev *devSignIn) *VerifyResult {
 	}
 
 	return &VerifyResult{Authenticated: true, User: session.User}
+}
+
+func verifyFailed(err error) *VerifyError {
+	log.Printf("stackure: verification error: %v", err)
+	return &VerifyError{Code: 500, Message: "Authentication verification failed"}
+}
+
+func wantsHTML(r *http.Request) bool {
+	accept := r.Header.Get("Accept")
+	return strings.Contains(accept, "text/html") && !strings.Contains(accept, "application/json")
+}
+
+func failurePage(message string) string {
+	return baseURL() + "/sign-in/magic-link?state=error&message=" + message
 }
 
 func handoffForm(r *http.Request, local bool) url.Values {
@@ -88,7 +101,12 @@ func adoptToken(w http.ResponseWriter, r *http.Request, form url.Values) bool {
 	if tok == "" || r.Header.Get("Origin") != origin() {
 		return false
 	}
-	if s, err := validateToken(tok, r, nil); err != nil || !s.Authenticated {
+	s, err := validateToken(tok, r, nil)
+	if err != nil {
+		refuse(w, r, verifyFailed(err))
+		return true
+	}
+	if !s.Authenticated {
 		return false
 	}
 
@@ -137,7 +155,11 @@ func redeemCode(w http.ResponseWriter, r *http.Request) bool {
 	tok, err := exchangeCode(code, cookie(r, verifierCookie), r)
 	if err != nil {
 		log.Printf("stackure: localhost sign-in failed: %v", err)
-		deny(w, http.StatusUnauthorized, "localhost sign-in failed, reload to try again")
+		if wantsHTML(r) {
+			http.Redirect(w, r, failurePage("localhostFailed"), http.StatusSeeOther)
+		} else {
+			deny(w, http.StatusUnauthorized, "localhost sign-in failed, reload to try again")
+		}
 		return true
 	}
 
@@ -174,35 +196,41 @@ func Auth() func(http.Handler) http.Handler {
 			result := check(r, dev)
 
 			if !result.Authenticated && result.Error != nil {
-				if result.Error.Code == 401 {
-					accept := r.Header.Get("Accept")
-					if strings.Contains(accept, "text/html") && !strings.Contains(accept, "application/json") && result.Error.SignInURL != "" {
-						if local {
-							setCookie(w, r, verifierCookie, verifier, verifierMaxAge)
-						}
-						http.Redirect(w, r, result.Error.SignInURL, http.StatusFound)
-						return
+				if result.Error.Code == 401 && wantsHTML(r) && result.Error.SignInURL != "" {
+					if local {
+						setCookie(w, r, verifierCookie, verifier, verifierMaxAge)
 					}
+					http.Redirect(w, r, result.Error.SignInURL, http.StatusFound)
+					return
 				}
 
-				label := "Error"
-				if result.Error.Code == 401 {
-					label = "Unauthorized"
-				}
-
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(result.Error.Code)
-				_ = json.NewEncoder(w).Encode(map[string]any{
-					"error":       label,
-					"message":     result.Error.Message,
-					"sign_in_url": result.Error.SignInURL,
-				})
+				refuse(w, r, result.Error)
 				return
 			}
 
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userContextKey, result.User)))
 		})
 	}
+}
+
+func refuse(w http.ResponseWriter, r *http.Request, e *VerifyError) {
+	if e.Code == 500 && wantsHTML(r) {
+		http.Redirect(w, r, failurePage("appUnavailable"), http.StatusSeeOther)
+		return
+	}
+
+	label := "Error"
+	if e.Code == 401 {
+		label = "Unauthorized"
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(e.Code)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error":       label,
+		"message":     e.Message,
+		"sign_in_url": e.SignInURL,
+	})
 }
 
 func deny(w http.ResponseWriter, code int, msg string) {
