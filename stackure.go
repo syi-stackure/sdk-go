@@ -17,7 +17,6 @@ import (
 )
 
 const (
-	defaultBaseURL = "https://stackure.com"
 	sessionCookie  = "session"
 	tokenParam     = "session_token"
 	codeParam      = "stackure_code"
@@ -46,10 +45,7 @@ func origin() string {
 }
 
 func baseURL() string {
-	if v := os.Getenv("STACKURE_BASE_URL"); v != "" {
-		return strings.TrimRight(v, "/")
-	}
-	return defaultBaseURL
+	return strings.TrimRight(os.Getenv("STACKURE_BASE_URL"), "/")
 }
 
 func appSecret() (string, error) {
@@ -151,6 +147,9 @@ type callOpts struct {
 func request(ctx context.Context, method, path string, o callOpts) (int, []byte, error) {
 	var secret string
 	var err error
+	if baseURL() == "" {
+		return 0, nil, newErr("validation", 0, "STACKURE_BASE_URL is not set")
+	}
 	if o.bearer == "" {
 		if secret, err = appSecret(); err != nil {
 			return 0, nil, err

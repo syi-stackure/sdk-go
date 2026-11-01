@@ -16,7 +16,7 @@ Needs Go 1.27 or later.
 
 ## Quickstart
 
-Set `STACKURE_APP_ID` and `STACKURE_APP_SECRET` from the app's page in Stackure, then serve your app's registered URL behind `Auth`:
+Set `STACKURE_APP_ID` and `STACKURE_APP_SECRET` from the app's page in Stackure and `STACKURE_BASE_URL` to your region's address, `https://eu.stackure.com` or `https://us.stackure.com`, then serve your app's registered URL behind `Auth`:
 
 ```go
 package main

@@ -136,8 +136,11 @@
 // registered (or last rotated) in Stackure. It is sent as the X-App-Secret
 // header on every call except Logout's sign-out call, which carries only the
 // session token; the first call that actually reaches Stackure fails with a
-// "validation" error when it is unset. STACKURE_BASE_URL overrides the API host
-// (default https://stackure.com).
+// "validation" error when it is unset.
+//
+// STACKURE_BASE_URL must be set to your region's address,
+// https://eu.stackure.com or https://us.stackure.com. Every call goes there,
+// and the first call fails with a "validation" error when it is unset.
 //
 // Every SDK call has one 2-second deadline covering connect, headers, body and
 // the single retry. The SDK retries once after 500 ms on a 5xx response or a
