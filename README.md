@@ -4,7 +4,7 @@
 [![Go Reference](https://pkg.go.dev/badge/stackure.com/sdk-go.svg)](https://pkg.go.dev/stackure.com/sdk-go)
 [![Latest release](https://img.shields.io/github/v/release/syi-stackure/sdk-go?sort=semver)](https://github.com/syi-stackure/sdk-go/releases)
 
-[Stackure](https://stackure.com) is passwordless auth for B2B apps. This SDK adds it to a Go app as `net/http` middleware, with zero dependencies.
+[Stackure](https://stackure.com) is sign-in and app access for your people and your partners. This SDK adds it to a Go app as `net/http` middleware, with zero dependencies.
 
 ## Install
 

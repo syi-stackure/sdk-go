@@ -1,7 +1,8 @@
 // Package stackure is the Go SDK for the Stackure authentication API.
 //
-// Stackure provides passwordless B2B authentication. This SDK wraps the
-// public API behind 7 free functions and the Auth and MCP middleware.
+// Stackure provides sign-in and app access for your people and your
+// partners. This SDK wraps the public API behind 7 free functions and the
+// Auth and MCP middleware.
 //
 // # Quickstart
 //
