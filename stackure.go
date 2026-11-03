@@ -123,8 +123,13 @@ type Session struct {
 	SignInURL     string `json:"sign_in_url,omitempty"`
 }
 
-type mcpSession struct {
+type validated struct {
 	Session
+	EventsWaiting int `json:"events_waiting"`
+}
+
+type mcpSession struct {
+	validated
 	WWWAuthenticate string `json:"www_authenticate"`
 }
 
@@ -328,11 +333,12 @@ func validateToken(tok string, r *http.Request, dev *devSignIn) (*Session, error
 		q.Set("return", dev.url)
 		q.Set("challenge", dev.challenge)
 	}
-	out := &Session{}
+	out := &validated{}
 	if err := getWithSession(r, "/api/public/auth/session/validate", q, tok, nil, out); err != nil {
 		return nil, err
 	}
-	return out, nil
+	noteEvents(out.EventsWaiting)
+	return &out.Session, nil
 }
 
 func exchangeCode(code, verifier string, r *http.Request) (string, error) {
@@ -451,5 +457,6 @@ func validateMCP(r *http.Request) (*mcpSession, error) {
 	if err := handleResponse(st, b, out); err != nil {
 		return nil, err
 	}
+	noteEvents(out.EventsWaiting)
 	return out, nil
 }
