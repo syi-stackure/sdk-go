@@ -1,6 +1,7 @@
 package stackure_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -110,4 +111,14 @@ func ExampleStackureError() {
 		}
 	}
 	// Output: bad input: invalid email format
+}
+
+func ExampleOnOrgClosed() {
+	deleteOrg := func(ctx context.Context, accountID string) error {
+		return nil
+	}
+
+	stackure.OnOrgClosed(func(ctx context.Context, accountID string) error {
+		return deleteOrg(ctx, accountID)
+	})
 }

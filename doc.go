@@ -1,7 +1,7 @@
 // Package stackure is the Go SDK for the Stackure authentication API.
 //
 // Stackure provides sign-in and app access for your people and your
-// partners. This SDK wraps the public API behind 7 free functions and the
+// partners. This SDK wraps the public API behind 8 free functions and the
 // Auth and MCP middleware.
 //
 // # Quickstart
@@ -126,6 +126,34 @@
 // cookie, like ValidateSession, so call them from a route behind Auth. MCP
 // bearer tokens are not accepted. A request without a valid session gets an
 // "auth" error.
+//
+// # Closed organizations
+//
+// When an organization closes in Stackure, every app it used that another
+// organization added is asked to delete what it stores for it and for the
+// organizations under it. Register one function to do that:
+//
+//	stackure.OnOrgClosed(func(ctx context.Context, accountID string) error {
+//	    return db.DeleteOrg(ctx, accountID)
+//	})
+//
+// accountID is the closed organization's ID, the same value as
+// User.AccountID. There is no scheduled job, endpoint or setting to add. The
+// SDK checks once when OnOrgClosed is called, and Stackure reports new
+// closures on the session checks the SDK already makes. The SDK then runs the
+// function in the background, once for each closed organization, and tells
+// Stackure each one is done when the function returns nil.
+//
+// The same organization can arrive again, for example when the app stops
+// between deleting and telling Stackure, so the function must also succeed
+// when there is nothing left to delete. When it returns an error or panics,
+// the SDK logs it and tries that organization again on a later check, at
+// least 5 minutes later. Stackure keeps each one waiting for 1 year.
+//
+// Until OnOrgClosed is registered, the SDK logs once that closed
+// organizations are waiting, and the app's page in Stackure shows how many.
+// Only the app secret receives closed organizations; the development secret
+// never does.
 //
 // # Configuration
 //
