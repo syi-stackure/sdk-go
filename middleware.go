@@ -32,7 +32,7 @@ func Verify(r *http.Request) *VerifyResult {
 }
 
 func check(r *http.Request, dev *devSignIn) *VerifyResult {
-	session, err := validateToken(sessionToken(r), r, dev)
+	session, err := validate(sessionToken(r), r, dev)
 	if err != nil {
 		return &VerifyResult{Error: verifyFailed(err)}
 	}
@@ -46,6 +46,19 @@ func check(r *http.Request, dev *devSignIn) *VerifyResult {
 	}
 
 	return &VerifyResult{Authenticated: true, User: session.User}
+}
+
+func ValidateSession(r *http.Request) (*Session, error) {
+	return validate(sessionToken(r), r, nil)
+}
+
+func validate(tok string, r *http.Request, dev *devSignIn) (*Session, error) {
+	v, err := validateToken(tok, r, dev)
+	if err != nil {
+		return nil, err
+	}
+	noteEvents(v.EventsWaiting)
+	return &v.Session, nil
 }
 
 func verifyFailed(err error) *VerifyError {
@@ -101,7 +114,7 @@ func adoptToken(w http.ResponseWriter, r *http.Request, form url.Values) bool {
 	if tok == "" || r.Header.Get("Origin") != origin() {
 		return false
 	}
-	s, err := validateToken(tok, r, nil)
+	s, err := validate(tok, r, nil)
 	if err != nil {
 		refuse(w, r, verifyFailed(err))
 		return true
@@ -248,6 +261,7 @@ func MCP() func(http.Handler) http.Handler {
 				deny(w, http.StatusServiceUnavailable, "unavailable")
 				return
 			}
+			noteEvents(session.EventsWaiting)
 
 			if !session.Authenticated || session.User == nil {
 				challenge := session.WWWAuthenticate
