@@ -311,11 +311,7 @@ func SendMagicLink(email string) (*MagicLinkResponse, error) {
 	return out, nil
 }
 
-func ValidateSession(r *http.Request) (*Session, error) {
-	return validateToken(sessionToken(r), r, nil)
-}
-
-func validateToken(tok string, r *http.Request, dev *devSignIn) (*Session, error) {
+func validateToken(tok string, r *http.Request, dev *devSignIn) (*validated, error) {
 	id, err := appID()
 	if err != nil {
 		return nil, err
@@ -323,7 +319,7 @@ func validateToken(tok string, r *http.Request, dev *devSignIn) (*Session, error
 
 	if !uuidRegex.MatchString(tok) {
 		if dev == nil {
-			return &Session{SignInURL: baseURL() + "/sign-in/magic-link?app_id=" + id}, nil
+			return &validated{Session: Session{SignInURL: baseURL() + "/sign-in/magic-link?app_id=" + id}}, nil
 		}
 		tok = ""
 	}
@@ -337,8 +333,7 @@ func validateToken(tok string, r *http.Request, dev *devSignIn) (*Session, error
 	if err := getWithSession(r, "/api/public/auth/session/validate", q, tok, nil, out); err != nil {
 		return nil, err
 	}
-	noteEvents(out.EventsWaiting)
-	return &out.Session, nil
+	return out, nil
 }
 
 func exchangeCode(code, verifier string, r *http.Request) (string, error) {
@@ -457,6 +452,5 @@ func validateMCP(r *http.Request) (*mcpSession, error) {
 	if err := handleResponse(st, b, out); err != nil {
 		return nil, err
 	}
-	noteEvents(out.EventsWaiting)
 	return out, nil
 }
