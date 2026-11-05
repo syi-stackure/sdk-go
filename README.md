@@ -41,6 +41,10 @@ func main() {
 - Guide and reference: [stackure.com/docs/go](https://stackure.com/docs/go)
 - For AI agents: [stackure.com/llms.txt](https://stackure.com/llms.txt)
 
+## Model
+
+Modeled in Mappstack as the Stackure project. Every change starts in the model, then the code follows it.
+
 ## License
 
 MIT
