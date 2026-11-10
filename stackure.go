@@ -333,6 +333,7 @@ func validateToken(tok string, r *http.Request, dev *devSignIn) (*validated, err
 	if err := getWithSession(r, "/api/public/auth/session/validate", q, tok, nil, out); err != nil {
 		return nil, err
 	}
+	withEmptyTeams(&out.Session)
 	return out, nil
 }
 
@@ -452,5 +453,12 @@ func validateMCP(r *http.Request) (*mcpSession, error) {
 	if err := handleResponse(st, b, out); err != nil {
 		return nil, err
 	}
+	withEmptyTeams(&out.Session)
 	return out, nil
+}
+
+func withEmptyTeams(s *Session) {
+	if s.User != nil && s.User.UserTeams == nil {
+		s.User.UserTeams = []Team{}
+	}
 }
