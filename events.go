@@ -8,8 +8,6 @@ import (
 	"sync/atomic"
 )
 
-const maxEvents = 100
-
 type orgClosedFunc func(ctx context.Context, accountID string) error
 
 var (
@@ -115,7 +113,7 @@ func takeEvents(ctx context.Context, ack []string, max int) (*appEvents, error) 
 	if err != nil {
 		return nil, err
 	}
-	st, b, err := request(ctx, http.MethodPost, "/api/public/events", callOpts{body: map[string]any{"app_id": id, "ack": ack, "max_events": max}})
+	st, b, err := request(ctx, http.MethodPost, eventsPath, callOpts{body: map[string]any{"app_id": id, "ack": ack, "max_events": max}})
 	if err != nil {
 		return nil, err
 	}

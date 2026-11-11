@@ -48,7 +48,8 @@
 // validate endpoint for your app ID and never by Stackure itself.
 //
 // The Auth middleware consumes it automatically: it validates the token, stores
-// it in a cookie on your own domain and redirects to the same URL as a GET.
+// it in a stackure_session cookie on your own domain and redirects to the same
+// URL as a GET.
 // Invalid tokens are ignored, and handoff bodies over 4 KB are ignored (treated
 // as no token) and passed to your app untouched.
 //
@@ -64,10 +65,11 @@
 //
 // # Session binding
 //
-// Sessions are not bound to the browser's user agent or IP address. The SDK
-// still forwards the original User-Agent and X-Forwarded-For on every
-// validation call, but they are informational only; validation does not
-// depend on them.
+// Sessions are not bound to the browser's user agent or IP address. On every
+// call it makes for a request, the SDK still forwards the browser's User-Agent
+// and sends its IP address in Stackure-Client-IP: the first X-Forwarded-For
+// entry, else the connection's address. They are informational only;
+// validation does not depend on them.
 //
 // Every request with a session token is validated against Stackure, so revoking
 // a session takes effect immediately. Requests without a well-formed token get
@@ -157,27 +159,35 @@
 //
 // # Configuration
 //
+// The SDK reads STACKURE_APP_ID, STACKURE_APP_SECRET and STACKURE_BASE_URL
+// once, on its first call, and keeps them until the process exits. Restart the
+// app after changing them.
+//
 // STACKURE_APP_ID must be set to the app's UUID shown on the app page in
-// Stackure. Every call except Logout reads it on each request and fails with a
-// "validation" error when it is unset or not a valid UUID.
+// Stackure. Every call except Logout needs it and fails with a "validation"
+// error when it is unset or not a valid UUID.
 //
 // STACKURE_APP_SECRET must be set to the app secret shown when the app was
 // registered (or last rotated) in Stackure. It is sent as the X-App-Secret
-// header on every call except Logout's sign-out call, which carries only the
-// session token; the first call that actually reaches Stackure fails with a
-// "validation" error when it is unset.
+// header on every call, and every call fails with a "validation" error when it
+// is unset, except Logout's sign-out call: that call carries the session token
+// and sends the secret only when it is set.
 //
 // STACKURE_BASE_URL must be set to your region's address,
 // https://eu.stackure.com or https://us.stackure.com. Every call goes there,
-// and the first call fails with a "validation" error when it is unset.
+// and every call fails with a "validation" error when it is unset, isn't an
+// https URL or has a query or fragment. http is accepted only on localhost or
+// 127.0.0.1. A trailing "/" is dropped.
 //
 // Every SDK call has one 2-second deadline covering connect, headers, body and
-// the single retry. The SDK retries once after 500 ms on a 5xx response or a
-// connection failure (refused, reset, DNS, TLS), and only if more than 500 ms
-// of the deadline remain. Timeouts are never retried and surface as a
-// "timeout" error, even when they happen while reading the body. Redirects are
-// not followed; a 3xx response surfaces as a "network" error. The localhost
-// sign-in code swap is never retried, because each code works only once.
+// any retry. Only reads are retried: a session check or directory call is
+// tried once more after 500 ms on a 5xx response or a connection failure
+// (refused, reset, DNS, TLS), and only if more than 500 ms of the deadline
+// remain. Calls that change something are never retried: sending a magic
+// link, the localhost sign-in code swap, sign-out and the closed organizations
+// check. Timeouts are never retried and surface as a "timeout" error, even when
+// they happen while reading the body. Redirects are not followed; a 3xx
+// response surfaces as a "network" error.
 //
 // # Errors
 //

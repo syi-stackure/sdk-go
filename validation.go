@@ -1,6 +1,9 @@
 package stackure
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 var (
 	emailRegex = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
@@ -9,6 +12,10 @@ var (
 
 	loopbackRegex = regexp.MustCompile(`^(localhost|127\.0\.0\.1)(:\d+)?$`)
 )
+
+func isLoopbackHost(host string) bool {
+	return loopbackRegex.MatchString(strings.ToLower(host))
+}
 
 // validateEmail returns a "validation"-coded StackureError when email is not
 // a well-formed address.

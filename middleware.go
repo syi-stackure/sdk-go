@@ -72,7 +72,7 @@ func wantsHTML(r *http.Request) bool {
 }
 
 func failurePage(message string) string {
-	return baseURL() + "/sign-in/magic-link?state=error&message=" + message
+	return baseURL() + signInPage + "?state=error&message=" + message
 }
 
 func handoffForm(r *http.Request, local bool) url.Values {
@@ -129,7 +129,7 @@ func adoptToken(w http.ResponseWriter, r *http.Request, form url.Values) bool {
 }
 
 func newVerifier() string {
-	b := make([]byte, 32)
+	b := make([]byte, verifierBytes)
 	_, _ = rand.Read(b)
 	return base64.RawURLEncoding.EncodeToString(b)
 }
@@ -293,14 +293,14 @@ func sameOriginPost(r *http.Request) bool {
 
 func Logout(w http.ResponseWriter, r *http.Request) {
 	if !sameOriginPost(r) {
-		http.Redirect(w, r, baseURL()+"/signout", http.StatusSeeOther)
+		http.Redirect(w, r, baseURL()+signOutPage, http.StatusSeeOther)
 		return
 	}
-	dest := baseURL() + "/"
+	dest := baseURL() + homePage
 	if tok := sessionToken(r); uuidRegex.MatchString(tok) {
-		st, _, err := request(context.WithoutCancel(r.Context()), http.MethodPost, "/api/public/auth/sign-out", callOpts{bearer: tok, noBody: true, ua: r.UserAgent(), ip: clientIP(r)})
+		st, _, err := request(context.WithoutCancel(r.Context()), http.MethodPost, signOutPath, callOpts{bearer: tok, noBody: true, ua: r.UserAgent(), ip: clientIP(r)})
 		if err != nil || st/100 != 2 {
-			dest = baseURL() + "/signout"
+			dest = baseURL() + signOutPage
 		}
 	}
 	setCookie(w, r, sessionCookie, "", -1)

@@ -10,60 +10,14 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 )
 
-const (
-	sessionCookie  = "session"
-	tokenParam     = "session_token"
-	codeParam      = "stackure_code"
-	codeCookie     = "stackure_code"
-	verifierCookie = "stackure_verifier"
-	sessionMaxAge  = 7 * 24 * 3600
-	codeMaxAge     = 60
-	verifierMaxAge = 15 * 60
-	maxHandoffBody = 4 << 10
-	requestTimeout = 2 * time.Second
-	maxRetries     = 1
-	retryDelay     = 500 * time.Millisecond
-)
-
 var httpClient = &http.Client{
 	Timeout:       requestTimeout,
 	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-}
-
-func origin() string {
-	u, err := url.Parse(baseURL())
-	if err != nil {
-		return ""
-	}
-	return u.Scheme + "://" + u.Host
-}
-
-func baseURL() string {
-	return strings.TrimRight(os.Getenv("STACKURE_BASE_URL"), "/")
-}
-
-func appSecret() (string, error) {
-	if v := os.Getenv("STACKURE_APP_SECRET"); v != "" {
-		return v, nil
-	}
-	return "", newErr("validation", 0, "STACKURE_APP_SECRET is not set")
-}
-
-func appID() (string, error) {
-	v := os.Getenv("STACKURE_APP_ID")
-	if v == "" {
-		return "", newErr("validation", 0, "STACKURE_APP_ID is not set")
-	}
-	if !uuidRegex.MatchString(v) {
-		return "", newErr("validation", 0, "invalid STACKURE_APP_ID format (must be a valid UUID)")
-	}
-	return v, nil
 }
 
 type User struct {
@@ -139,7 +93,6 @@ type devSignIn struct {
 
 type callOpts struct {
 	body    any
-	once    bool
 	query   url.Values
 	cookies []*http.Cookie
 	ua, ip  string
@@ -150,17 +103,16 @@ type callOpts struct {
 }
 
 func request(ctx context.Context, method, path string, o callOpts) (int, []byte, error) {
-	var secret string
-	var err error
-	if baseURL() == "" {
-		return 0, nil, newErr("validation", 0, "STACKURE_BASE_URL is not set")
+	base, err := requiredBaseURL()
+	if err != nil {
+		return 0, nil, err
 	}
-	if o.bearer == "" {
-		if secret, err = appSecret(); err != nil {
-			return 0, nil, err
-		}
+	secret, err := appSecret()
+	if err != nil && o.bearer == "" {
+		return 0, nil, err
 	}
-	fullURL := baseURL() + path
+	retry := method == http.MethodGet
+	fullURL := base + path
 	if len(o.query) > 0 {
 		fullURL += "?" + o.query.Encode()
 	}
@@ -190,7 +142,8 @@ func request(ctx context.Context, method, path string, o callOpts) (int, []byte,
 		}
 		if o.bearer != "" {
 			req.Header.Set("Authorization", "Bearer "+o.bearer)
-		} else {
+		}
+		if secret != "" {
 			req.Header.Set("X-App-Secret", secret)
 		}
 		if o.token != "" {
@@ -200,7 +153,7 @@ func request(ctx context.Context, method, path string, o callOpts) (int, []byte,
 			req.Header.Set("User-Agent", o.ua)
 		}
 		if o.ip != "" {
-			req.Header.Set("X-Forwarded-For", o.ip)
+			req.Header.Set("Stackure-Client-IP", o.ip)
 		}
 		for _, c := range o.cookies {
 			req.AddCookie(c)
@@ -219,7 +172,7 @@ func request(ctx context.Context, method, path string, o callOpts) (int, []byte,
 				return resp.StatusCode, b, nil
 			}
 		}
-		if o.once || ctx.Err() != nil || attempt == maxRetries || time.Until(deadline) <= retryDelay {
+		if !retry || ctx.Err() != nil || attempt == maxRetries || time.Until(deadline) <= retryDelay {
 			if err != nil {
 				return fail(err)
 			}
@@ -279,7 +232,7 @@ func sessionToken(r *http.Request) string {
 }
 
 func isLoopback(r *http.Request) bool {
-	return loopbackRegex.MatchString(strings.ToLower(r.Host))
+	return isLoopbackHost(r.Host)
 }
 
 func bearerToken(r *http.Request) string {
@@ -299,7 +252,7 @@ func SendMagicLink(email string) (*MagicLinkResponse, error) {
 		return nil, err
 	}
 
-	st, b, err := request(context.Background(), http.MethodPost, "/api/public/auth/magic-link/send", callOpts{body: map[string]string{"user_email": email, "app_id": id}})
+	st, b, err := request(context.Background(), http.MethodPost, magicLinkPath, callOpts{body: map[string]string{"user_email": email, "app_id": id}})
 	if err != nil {
 		return nil, err
 	}
@@ -319,7 +272,11 @@ func validateToken(tok string, r *http.Request, dev *devSignIn) (*validated, err
 
 	if !uuidRegex.MatchString(tok) {
 		if dev == nil {
-			return &validated{Session: Session{SignInURL: baseURL() + "/sign-in/magic-link?app_id=" + id}}, nil
+			base, err := requiredBaseURL()
+			if err != nil {
+				return nil, err
+			}
+			return &validated{Session: Session{SignInURL: base + signInPage + "?app_id=" + id}}, nil
 		}
 		tok = ""
 	}
@@ -330,7 +287,7 @@ func validateToken(tok string, r *http.Request, dev *devSignIn) (*validated, err
 		q.Set("challenge", dev.challenge)
 	}
 	out := &validated{}
-	if err := getWithSession(r, "/api/public/auth/session/validate", q, tok, nil, out); err != nil {
+	if err := getWithSession(r, validatePath, q, tok, nil, out); err != nil {
 		return nil, err
 	}
 	withEmptyTeams(&out.Session)
@@ -344,7 +301,7 @@ func exchangeCode(code, verifier string, r *http.Request) (string, error) {
 	}
 
 	body := map[string]string{"app_id": id, "code": code, "verifier": verifier}
-	st, b, err := request(r.Context(), http.MethodPost, "/api/public/auth/session/exchange", callOpts{body: body, once: true, ua: r.UserAgent(), ip: clientIP(r)})
+	st, b, err := request(r.Context(), http.MethodPost, exchangePath, callOpts{body: body, ua: r.UserAgent(), ip: clientIP(r)})
 	if err != nil {
 		return "", err
 	}
@@ -362,11 +319,11 @@ func exchangeCode(code, verifier string, r *http.Request) (string, error) {
 }
 
 func DirectoryUsers(r *http.Request, o DirectoryOptions) (*DirectoryPage[DirectoryUser], error) {
-	return directory[DirectoryUser](r, "/api/public/directory/users", o)
+	return directory[DirectoryUser](r, directoryUsersPath, o)
 }
 
 func DirectoryTeams(r *http.Request, o DirectoryOptions) (*DirectoryPage[Team], error) {
-	return directory[Team](r, "/api/public/directory/teams", o)
+	return directory[Team](r, directoryTeamsPath, o)
 }
 
 func directory[T any](r *http.Request, path string, o DirectoryOptions) (*DirectoryPage[T], error) {
@@ -411,7 +368,7 @@ func getWithSession(r *http.Request, path string, q url.Values, tok string, h *h
 		header: h,
 	}
 	if tok != "" {
-		o.cookies = []*http.Cookie{{Name: sessionCookie, Value: tok}}
+		o.cookies = []*http.Cookie{{Name: platformCookie, Value: tok}}
 	}
 
 	st, b, err := request(r.Context(), http.MethodGet, path, o)
@@ -444,7 +401,7 @@ func validateMCP(r *http.Request) (*mcpSession, error) {
 		token: bearerToken(r),
 	}
 
-	st, b, err := request(r.Context(), http.MethodGet, "/api/public/auth/session/validate", o)
+	st, b, err := request(r.Context(), http.MethodGet, validatePath, o)
 	if err != nil {
 		return nil, err
 	}
